@@ -4,11 +4,12 @@ import {
   PlusCircle, Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
   BarChart3, ListFilter, Search, Filter, DollarSign, CheckCircle2, 
   ArrowUpRight, Truck, Check, Edit2, FileText, Printer, Send, CheckSquare, Square,
-  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2
+  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck
 } from 'lucide-react';
 
 export default function App() {
   const [envios, setEnvios] = useState([]);
+  const [pedidos, setPedidos] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [pagosProveedores, setPagosProveedores] = useState([]);
   const [abonosCliente, setAbonosCliente] = useState([]);
@@ -16,6 +17,8 @@ export default function App() {
 
   // Modales
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [modalNuevoPedido, setModalNuevoPedido] = useState(false);
+  const [modalLiquidarPedido, setModalLiquidarPedido] = useState(null);
   const [modalAbonoAbierto, setModalAbonoAbierto] = useState(false);
   const [modalAbonoMultipleAbierto, setModalAbonoMultipleAbierto] = useState(false);
   const [modalPagoProvAbierto, setModalPagoProvAbierto] = useState(false);
@@ -24,7 +27,7 @@ export default function App() {
   const [modalHistorialAbonos, setModalHistorialAbonos] = useState(null);
   const [modalCuentaCobro, setModalCuentaCobro] = useState(null);
 
-  // Checkboxes de selección en la tabla principal
+  // Checkboxes tabla principal
   const [seleccionadosTabla, setSeleccionadosTabla] = useState([]);
 
   // Estados Abono Individual Cliente
@@ -32,14 +35,32 @@ export default function App() {
   const [montoAbono, setMontoAbono] = useState('');
   const [fechaAbono, setFechaAbono] = useState(new Date().toISOString().split('T')[0]);
 
-  // Estados Abono Múltiple Cliente (Modal)
+  // Estados Abono Múltiple Cliente
   const [cuentasSeleccionadasModal, setCuentasSeleccionadasModal] = useState([]);
   const [fechaAbonoMultiple, setFechaAbonoMultiple] = useState(new Date().toISOString().split('T')[0]);
   const [notasAbonoMultiple, setNotasAbonoMultiple] = useState('');
   const [montoRealRecibido, setMontoRealRecibido] = useState('');
   const [esDescuentoDefinitivo, setEsDescuentoDefinitivo] = useState(true);
 
-  // Formulario de edición de despacho completo
+  // Formulario Liquidar Pedido -> Despacho
+  const [formLiquidar, setFormLiquidar] = useState({
+    consecutivo: '',
+    fecha_envio: new Date().toISOString().split('T')[0],
+    kilos: '',
+    notas: ''
+  });
+
+  // Formulario Nuevo Pedido
+  const [formPedido, setFormPedido] = useState({
+    fecha_pedido: new Date().toISOString().split('T')[0],
+    cajas: '',
+    precio_compra_kg: 8000,
+    precio_venta_kg: 11200,
+    costo_flete_caja: 32000,
+    notas: ''
+  });
+
+  // Formulario Edición de Despacho Completo
   const [formEdicion, setFormEdicion] = useState({
     id: '',
     consecutivo: '',
@@ -52,14 +73,14 @@ export default function App() {
     notas: ''
   });
 
-  // Estados Pago Proveedor (Modal)
+  // Estados Pago Proveedor
   const [provSeleccionadoId, setProvSeleccionadoId] = useState('');
   const [despachosProvSeleccionados, setDespachosProvSeleccionados] = useState([]);
   const [fechaPagoProv, setFechaPagoProv] = useState(new Date().toISOString().split('T')[0]);
   const [notasPagoProv, setNotasPagoProv] = useState('');
 
   const [darkMode, setDarkMode] = useState(true);
-  const [pestanaActiva, setPestanaActiva] = useState('tabla');
+  const [pestanaActiva, setPestanaActiva] = useState('tabla'); // 'tabla', 'pedidos', 'dashboard'
 
   // Filtros
   const [filtroTexto, setFiltroTexto] = useState('');
@@ -110,6 +131,7 @@ export default function App() {
 
   async function cargarDatos() {
     setLoading(true);
+
     const { data: dataEnvios } = await supabase
       .from('v_resumen_envios')
       .select('*')
@@ -122,6 +144,13 @@ export default function App() {
         consecutivo: calcularSiguienteConsecutivo(dataEnvios)
       }));
     }
+
+    const { data: dataPedidos } = await supabase
+      .from('pedidos')
+      .select('*')
+      .order('fecha_pedido', { ascending: false });
+
+    if (dataPedidos) setPedidos(dataPedidos);
 
     const { data: dataProv } = await supabase.from('proveedores').select('*').order('tipo');
     if (dataProv) {
@@ -200,7 +229,6 @@ export default function App() {
     document.body.removeChild(link);
   }
 
-  // Impresión asignando el nombre de archivo con consecutivo
   function imprimirConNombre(envio) {
     const tituloOriginal = document.title;
     document.title = `${envio.consecutivo} - Cuenta de cobro - aguacates`;
@@ -210,7 +238,6 @@ export default function App() {
     }, 1000);
   }
 
-  // Envío a WhatsApp abriendo la app nativa o WhatsApp Web
   function enviarWhatsApp(envio) {
     const texto = `Hola, adjunto los detalles de la Cuenta de Cobro #${envio.consecutivo} con fecha ${envio.fecha_envio}:%0A%0A` +
       `🥑 *Concepto:* Aguacate Hass - Grueso%0A` +
@@ -232,6 +259,81 @@ export default function App() {
         window.open(urlWeb, '_blank');
       }
     }, 400);
+  }
+
+  // FLUJO DE PEDIDOS
+  function abrirModalCrearPedido() {
+    setFormPedido({
+      fecha_pedido: new Date().toISOString().split('T')[0],
+      cajas: '',
+      precio_compra_kg: 8000,
+      precio_venta_kg: 11200,
+      costo_flete_caja: 32000,
+      notas: ''
+    });
+    setModalNuevoPedido(true);
+  }
+
+  async function guardarNuevoPedido(e) {
+    e.preventDefault();
+    const { error } = await supabase.from('pedidos').insert([{
+      fecha_pedido: formPedido.fecha_pedido,
+      cajas: Number(formPedido.cajas),
+      precio_compra_kg: Number(formPedido.precio_compra_kg),
+      precio_venta_kg: Number(formPedido.precio_venta_kg),
+      costo_flete_caja: Number(formPedido.costo_flete_caja),
+      notas: formPedido.notas
+    }]);
+
+    if (!error) {
+      setModalNuevoPedido(false);
+      await cargarDatos();
+    } else {
+      alert('Error guardando pedido: ' + error.message);
+    }
+  }
+
+  function iniciarLiquidacionPedido(pedido) {
+    setModalLiquidarPedido(pedido);
+    setFormLiquidar({
+      consecutivo: calcularSiguienteConsecutivo(envios),
+      fecha_envio: new Date().toISOString().split('T')[0],
+      kilos: '',
+      notas: pedido.notas || ''
+    });
+  }
+
+  async function confirmarLiquidacionPedido(e) {
+    e.preventDefault();
+    if (!modalLiquidarPedido || !formLiquidar.kilos || Number(formLiquidar.kilos) <= 0) return;
+
+    // 1. Insertar el envío real
+    const { error: errorEnvio } = await supabase.from('envios').insert([{
+      consecutivo: formLiquidar.consecutivo,
+      fecha_envio: formLiquidar.fecha_envio,
+      cajas: Number(modalLiquidarPedido.cajas),
+      kilos: Number(formLiquidar.kilos),
+      precio_compra_kg: Number(modalLiquidarPedido.precio_compra_kg),
+      precio_venta_kg: Number(modalLiquidarPedido.precio_venta_kg),
+      costo_flete_caja: Number(modalLiquidarPedido.costo_flete_caja),
+      notas: formLiquidar.notas
+    }]);
+
+    if (!errorEnvio) {
+      // 2. Marcar pedido como liquidado
+      await supabase.from('pedidos').update({ estado: 'liquidado' }).eq('id', modalLiquidarPedido.id);
+      setModalLiquidarPedido(null);
+      setPestanaActiva('tabla');
+      await cargarDatos();
+    } else {
+      alert('Error liquidando pedido: ' + errorEnvio.message);
+    }
+  }
+
+  async function cancelarPedido(pedidoId) {
+    if (!window.confirm('¿Deseas cancelar este pedido?')) return;
+    await supabase.from('pedidos').update({ estado: 'cancelado' }).eq('id', pedidoId);
+    await cargarDatos();
   }
 
   function abrirModalNuevo() {
@@ -295,10 +397,7 @@ export default function App() {
   async function eliminarAbono(abonoId) {
     if (!window.confirm('¿Seguro que deseas anular este abono? El saldo volverá a quedar pendiente.')) return;
 
-    const { error } = await supabase
-      .from('abonos_cliente')
-      .delete()
-      .eq('id', abonoId);
+    const { error } = await supabase.from('abonos_cliente').delete().eq('id', abonoId);
 
     if (!error) {
       await cargarDatos();
@@ -582,6 +681,10 @@ export default function App() {
     return Array.from(meses).sort().reverse();
   }, [envios]);
 
+  const pedidosPendientes = useMemo(() => {
+    return pedidos.filter(p => p.estado === 'pendiente');
+  }, [pedidos]);
+
   const enviosFiltrados = useMemo(() => {
     const filtrados = envios.filter(r => {
       const coincideTexto = r.consecutivo?.toLowerCase().includes(filtroTexto.toLowerCase()) || r.fecha_envio?.includes(filtroTexto);
@@ -772,6 +875,13 @@ export default function App() {
           </button>
 
           <button 
+            onClick={abrirModalCrearPedido}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: '#eab308', color: '#090d16', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(234, 179, 8, 0.25)' }}
+          >
+            <Clock size={18} /> + Nuevo Pedido
+          </button>
+
+          <button 
             onClick={abrirModalAbonoMultiple} 
             style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)' }}
           >
@@ -786,7 +896,7 @@ export default function App() {
           </button>
 
           <button onClick={abrirModalNuevo} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(22, 163, 74, 0.3)' }}>
-            <PlusCircle size={18} /> Nuevo Despacho
+            <PlusCircle size={18} /> Despacho Directo
           </button>
         </div>
       </div>
@@ -922,10 +1032,14 @@ export default function App() {
         )}
       </div>
 
-      {/* Pestañas */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', borderBottom: `1px solid ${tema.border}`, paddingBottom: '8px' }}>
+      {/* Pestañas de Navegación */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', borderBottom: `1px solid ${tema.border}`, paddingBottom: '8px', flexWrap: 'wrap' }}>
         <button onClick={() => setPestanaActiva('tabla')} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: pestanaActiva === 'tabla' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'tabla' ? tema.border : 'transparent'}`, borderRadius: '8px', color: pestanaActiva === 'tabla' ? '#38bdf8' : tema.textMuted, fontWeight: '700', cursor: 'pointer' }}>
           <ListFilter size={16} /> Registro de Despachos ({enviosFiltrados.length})
+        </button>
+
+        <button onClick={() => setPestanaActiva('pedidos')} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: pestanaActiva === 'pedidos' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'pedidos' ? tema.border : 'transparent'}`, borderRadius: '8px', color: pestanaActiva === 'pedidos' ? '#eab308' : tema.textMuted, fontWeight: '700', cursor: 'pointer' }}>
+          <Clock size={16} /> Pedidos Pendientes ({pedidosPendientes.length})
         </button>
 
         <button onClick={() => setPestanaActiva('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: pestanaActiva === 'dashboard' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'dashboard' ? tema.border : 'transparent'}`, borderRadius: '8px', color: pestanaActiva === 'dashboard' ? '#38bdf8' : tema.textMuted, fontWeight: '700', cursor: 'pointer' }}>
@@ -933,7 +1047,7 @@ export default function App() {
         </button>
       </div>
 
-      {/* VISTA 1: TABLA */}
+      {/* VISTA 1: TABLA PRINCIPAL DE DESPACHOS */}
       {pestanaActiva === 'tabla' && (
         <div style={{ background: tema.cardBg, borderRadius: '14px', border: `1px solid ${tema.border}`, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
@@ -1059,7 +1173,6 @@ export default function App() {
                       <td style={{ padding: '14px 18px', textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
                           
-                          {/* Botón Editar Despacho Completo (Lápiz) */}
                           <button
                             onClick={() => abrirModalEditarDespacho(r)}
                             title="Editar datos del despacho (fecha, kilos, cajas, precios)"
@@ -1068,7 +1181,6 @@ export default function App() {
                             <Edit2 size={13} color="#38bdf8" />
                           </button>
 
-                          {/* Botón Ver Cuenta de Cobro */}
                           <button
                             onClick={() => setModalCuentaCobro(r)}
                             title="Generar Cuenta de Cobro Formal / PDF"
@@ -1077,7 +1189,6 @@ export default function App() {
                             <FileText size={13} /> Cuenta
                           </button>
 
-                          {/* Botón WhatsApp */}
                           <button
                             onClick={() => enviarWhatsApp(r)}
                             title="Enviar por WhatsApp a Innovative Kitchen"
@@ -1086,7 +1197,6 @@ export default function App() {
                             <Send size={13} /> WhatsApp
                           </button>
 
-                          {/* Botón Abono o Botón Pagado con Reversión */}
                           {saldo > 0 ? (
                             <button onClick={() => abrirModalAbono(r)} style={{ padding: '6px 10px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                               <DollarSign size={13} /> Abono
@@ -1111,119 +1221,99 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL PARA VER Y ANULAR ABONOS */}
-      {modalHistorialAbonos && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 130, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '24px', borderRadius: '16px', width: '100%', maxWidth: '440px', border: `1px solid ${tema.border}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700' }}>Historial de Pagos</h3>
-                <p style={{ margin: '4px 0 0', color: tema.textMuted, fontSize: '13px' }}>Despacho #{modalHistorialAbonos.consecutivo}</p>
-              </div>
-              <button onClick={() => setModalHistorialAbonos(null)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+      {/* VISTA 2: BANDEJA DE PEDIDOS PENDIENTES */}
+      {pestanaActiva === 'pedidos' && (
+        <div style={{ background: tema.cardBg, borderRadius: '14px', border: `1px solid ${tema.border}`, padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>Pedidos Solicitados por Innovative</h3>
+              <p style={{ margin: '4px 0 0', color: tema.textMuted, fontSize: '13px' }}>
+                Registra la solicitud inicial en cajas (25 Kg teóricos por caja con Edison). Al llegar la báscula real, pulsa "Recibir y Liquidar".
+              </p>
             </div>
+            <button 
+              onClick={abrirModalCrearPedido}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#eab308', color: '#090d16', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              <Clock size={16} /> + Nuevo Pedido
+            </button>
+          </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
-              {abonosDelEnvioModal.length === 0 ? (
-                <div style={{ padding: '16px', textAlign: 'center', color: tema.textMuted, fontSize: '13px' }}>
-                  No hay abonos registrados para este despacho.
-                </div>
-              ) : (
-                abonosDelEnvioModal.map(a => (
-                  <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', borderRadius: '10px', background: tema.inputBg, border: `1px solid ${tema.border}` }}>
-                    <div>
-                      <div style={{ fontWeight: 'bold', fontSize: '15px', color: '#22c55e' }}>{formatoCOP(a.monto)}</div>
-                      <div style={{ fontSize: '12px', color: tema.textMuted }}>{a.fecha} • {a.metodo_pago}</div>
-                      {a.notas && <div style={{ fontSize: '11px', color: tema.textMuted, marginTop: '2px' }}>{a.notas}</div>}
-                    </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+              <thead>
+                <tr style={{ background: tema.thBg, borderBottom: `1px solid ${tema.border}`, color: tema.textMuted }}>
+                  <th style={{ padding: '12px 14px' }}>Fecha Pedido</th>
+                  <th style={{ padding: '12px 14px' }}>Cajas Pedidas</th>
+                  <th style={{ padding: '12px 14px' }}>Kilos Teóricos (Edison)</th>
+                  <th style={{ padding: '12px 14px' }}>Costo Fruta Teórico</th>
+                  <th style={{ padding: '12px 14px' }}>Flete Macareo</th>
+                  <th style={{ padding: '12px 14px' }}>Estado</th>
+                  <th style={{ padding: '12px 14px' }}>Notas</th>
+                  <th style={{ padding: '12px 14px', textAlign: 'center' }}>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pedidos.length === 0 ? (
+                  <tr><td colSpan="8" style={{ padding: '32px', textAlign: 'center', color: tema.textMuted }}>No hay pedidos registrados en el sistema.</td></tr>
+                ) : (
+                  pedidos.map(p => {
+                    const kilosTeoricos = Number(p.cajas || 0) * 25;
+                    const costoFrutaTeorico = kilosTeoricos * Number(p.precio_compra_kg || 0);
+                    const fleteTeorico = Number(p.cajas || 0) * Number(p.costo_flete_caja || 0);
 
-                    <button 
-                      onClick={() => eliminarAbono(a.id)}
-                      title="Anular este abono y devolver la deuda a pendiente"
-                      style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
-                    >
-                      <Trash2 size={13} /> Anular Pago
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => setModalHistorialAbonos(null)} style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cerrar</button>
-            </div>
+                    return (
+                      <tr key={p.id} style={{ borderBottom: `1px solid ${tema.rowBorder}` }}>
+                        <td style={{ padding: '14px' }}>{p.fecha_pedido}</td>
+                        <td style={{ padding: '14px', fontWeight: 'bold' }}>{p.cajas} cajas</td>
+                        <td style={{ padding: '14px', color: '#38bdf8' }}>{kilosTeoricos} Kg (25 Kg/caja)</td>
+                        <td style={{ padding: '14px', color: '#ef4444', fontWeight: '600' }}>{formatoCOP(costoFrutaTeorico)}</td>
+                        <td style={{ padding: '14px' }}>{formatoCOP(fleteTeorico)}</td>
+                        <td style={{ padding: '14px' }}>
+                          <span style={{ 
+                            padding: '4px 8px', 
+                            borderRadius: '6px', 
+                            fontSize: '11px', 
+                            fontWeight: 'bold',
+                            background: p.estado === 'pendiente' ? 'rgba(234, 179, 8, 0.15)' : p.estado === 'liquidado' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                            color: p.estado === 'pendiente' ? '#eab308' : p.estado === 'liquidado' ? '#22c55e' : '#ef4444'
+                          }}>
+                            {p.estado === 'pendiente' ? 'En Tránsito / Pendiente' : p.estado === 'liquidado' ? 'Despacho Creado' : 'Cancelado'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '14px', color: tema.textMuted, fontSize: '13px' }}>{p.notas || '-'}</td>
+                        <td style={{ padding: '14px', textAlign: 'center' }}>
+                          {p.estado === 'pendiente' ? (
+                            <div style={{ display: 'inline-flex', gap: '6px' }}>
+                              <button
+                                onClick={() => iniciarLiquidacionPedido(p)}
+                                style={{ padding: '6px 12px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <CheckCheck size={14} /> Recibir y Liquidar
+                              </button>
+                              <button
+                                onClick={() => cancelarPedido(p.id)}
+                                title="Cancelar pedido"
+                                style={{ padding: '6px 8px', background: 'transparent', border: `1px solid ${tema.border}`, color: '#ef4444', borderRadius: '6px', cursor: 'pointer' }}
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '12px', color: tema.textMuted }}>-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* MODAL PARA EDITAR DESPACHO COMPLETO */}
-      {modalEditarDespachoCompleto && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '28px', borderRadius: '18px', width: '100%', maxWidth: '520px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>Editar Datos del Despacho</h3>
-                <p style={{ margin: '4px 0 0', color: tema.textMuted, fontSize: '13px' }}>Modifica cualquier parámetro de esta cuenta de cobro</p>
-              </div>
-              <button onClick={() => setModalEditarDespachoCompleto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={20} /></button>
-            </div>
-
-            <form onSubmit={guardarEdicionDespacho} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Consecutivo</label>
-                  <input required value={formEdicion.consecutivo} onChange={(e) => setFormEdicion({...formEdicion, consecutivo: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Fecha Despacho</label>
-                  <input type="date" required value={formEdicion.fecha_envio} onChange={(e) => setFormEdicion({...formEdicion, fecha_envio: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#22c55e' }}>Número de Cajas</label>
-                  <input type="number" step="any" required value={formEdicion.cajas} onChange={(e) => setFormEdicion({...formEdicion, cajas: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box', fontSize: '16px', fontWeight: 'bold' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#22c55e' }}>Kilos Netos</label>
-                  <input type="number" step="any" required value={formEdicion.kilos} onChange={(e) => setFormEdicion({...formEdicion, kilos: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box', fontSize: '16px', fontWeight: 'bold' }} />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Compra/Kg (Edison)</label>
-                  <input type="number" required value={formEdicion.precio_compra_kg} onChange={(e) => setFormEdicion({...formEdicion, precio_compra_kg: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#ef4444', borderRadius: '8px', fontWeight: 'bold', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Venta/Kg (Innovative)</label>
-                  <input type="number" required value={formEdicion.precio_venta_kg} onChange={(e) => setFormEdicion({...formEdicion, precio_venta_kg: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', borderRadius: '8px', fontWeight: 'bold', boxSizing: 'border-box' }} />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Flete por Caja (Macareo)</label>
-                <input type="number" required value={formEdicion.costo_flete_caja} onChange={(e) => setFormEdicion({...formEdicion, costo_flete_caja: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Notas / Observaciones</label>
-                <input value={formEdicion.notas} onChange={(e) => setFormEdicion({...formEdicion, notas: e.target.value})} placeholder="Opcional..." style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                <button type="button" onClick={() => setModalEditarDespachoCompleto(false)} style={{ padding: '10px 18px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
-                <button type="submit" style={{ padding: '10px 20px', background: '#38bdf8', color: '#090d16', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar Cambios</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* VISTA 2: RUN CHART MULTIVARIABLE */}
+      {/* VISTA 3: RUN CHART */}
       {pestanaActiva === 'dashboard' && (
         <div style={{ background: tema.cardBg, padding: '24px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
@@ -1309,6 +1399,124 @@ export default function App() {
               </svg>
             </div>
           )}
+        </div>
+      )}
+
+      {/* MODAL: NUEVO PEDIDO INICIAL (SOLO CAJAS) */}
+      {modalNuevoPedido && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 110, padding: '16px' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '28px', borderRadius: '18px', width: '100%', maxWidth: '480px', border: `1px solid ${tema.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>Nuevo Pedido Solicitado</h3>
+                <p style={{ margin: '4px 0 0', color: tema.textMuted, fontSize: '13px' }}>Anota las cajas pedidas antes del despacho de Edison</p>
+              </div>
+              <button onClick={() => setModalNuevoPedido(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+
+            <form onSubmit={guardarNuevoPedido} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Fecha Pedido</label>
+                  <input type="date" required value={formPedido.fecha_pedido} onChange={(e) => setFormPedido({...formPedido, fecha_pedido: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#eab308' }}>Número de Cajas *</label>
+                  <input type="number" step="any" required placeholder="0" autoFocus value={formPedido.cajas} onChange={(e) => setFormPedido({...formPedido, cajas: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#eab308', fontSize: '16px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '12px', borderRadius: '10px', border: `1px solid ${tema.border}`, fontSize: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ color: tema.textMuted }}>Kilos Teóricos para Edison:</span>
+                  <b>{Number(formPedido.cajas || 0) * 25} Kg (25 Kg / caja)</b>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: tema.textMuted }}>Costo Fruta Teórico (@ {formatoCOP(formPedido.precio_compra_kg)}):</span>
+                  <b style={{ color: '#ef4444' }}>{formatoCOP(Number(formPedido.cajas || 0) * 25 * formPedido.precio_compra_kg)}</b>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Compra/Kg Edison</label>
+                  <select value={formPedido.precio_compra_kg} onChange={(e) => setFormPedido({...formPedido, precio_compra_kg: Number(e.target.value)})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', marginTop: '4px' }}>
+                    {PRECIOS_COMPRA.map(p => <option key={p} value={p}>{formatoCOP(p)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Venta/Kg Innovative</label>
+                  <select value={formPedido.precio_venta_kg} onChange={(e) => setFormPedido({...formPedido, precio_venta_kg: Number(e.target.value)})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', marginTop: '4px' }}>
+                    {PRECIOS_VENTA.map(p => <option key={p} value={p}>{formatoCOP(p)}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Notas / Instrucción</label>
+                <input placeholder="Ej: Pedido para entregar jueves primera hora" value={formPedido.notas} onChange={(e) => setFormPedido({...formPedido, notas: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+                <button type="button" onClick={() => setModalNuevoPedido(false)} style={{ padding: '10px 18px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '10px 20px', background: '#eab308', color: '#090d16', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar Pedido</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: LIQUIDAR PEDIDO (RECIBIR PESO DE BÁSCULA) */}
+      {modalLiquidarPedido && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '28px', borderRadius: '18px', width: '100%', maxWidth: '480px', border: `1px solid ${tema.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>Confirmar Pesaje y Liquidar</h3>
+                <p style={{ margin: '4px 0 0', color: tema.textMuted, fontSize: '13px' }}>Convierte el pedido en Cuenta de Cobro definitiva</p>
+              </div>
+              <button onClick={() => setModalLiquidarPedido(null)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+
+            <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '12px', borderRadius: '10px', border: `1px solid ${tema.border}`, marginBottom: '16px', fontSize: '13px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: tema.textMuted }}>Cajas Despachadas:</span><b>{modalLiquidarPedido.cajas} cajas</b>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: tema.textMuted }}>Costo Edison (Fijo 25 Kg/caja):</span>
+                <b style={{ color: '#ef4444' }}>{formatoCOP(Number(modalLiquidarPedido.cajas) * 25 * modalLiquidarPedido.precio_compra_kg)}</b>
+              </div>
+            </div>
+
+            <form onSubmit={confirmarLiquidacionPedido} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Consecutivo / Cuenta</label>
+                  <input required value={formLiquidar.consecutivo} onChange={(e) => setFormLiquidar({...formLiquidar, consecutivo: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Fecha Recepción</label>
+                  <input type="date" required value={formLiquidar.fecha_envio} onChange={(e) => setFormLiquidar({...formLiquidar, fecha_envio: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '700', color: '#22c55e' }}>Kilos Netos Pesados por Innovative *</label>
+                <input type="number" step="any" required placeholder="Ej: 99.50" autoFocus value={formLiquidar.kilos} onChange={(e) => setFormLiquidar({...formLiquidar, kilos: e.target.value})} style={{ width: '100%', padding: '12px', background: tema.inputBg, border: '1px solid #22c55e', color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+                <span style={{ fontSize: '11px', color: tema.textMuted, marginTop: '4px', display: 'block' }}>El valor exacto cantado en destino sin las canastillas.</span>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Notas / Observaciones</label>
+                <input value={formLiquidar.notas} onChange={(e) => setFormLiquidar({...formLiquidar, notas: e.target.value})} placeholder="Opcional..." style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+                <button type="button" onClick={() => setModalLiquidarPedido(null)} style={{ padding: '10px 18px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '10px 20px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Crear Despacho Oficial</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -1435,7 +1643,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 1: ABONO CLIENTE MÚLTIPLE */}
+      {/* MODAL: ABONO CLIENTE MÚLTIPLE */}
       {modalAbonoMultipleAbierto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '28px', borderRadius: '18px', width: '100%', maxWidth: '540px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
@@ -1527,7 +1735,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Ajuste por menor valor / merma */}
+              {/* Ajuste menor valor / merma */}
               <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '16px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <span style={{ fontSize: '13px', color: tema.textMuted }}>Total Cuentas Marcadas:</span>
@@ -1591,7 +1799,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 2: PAGAR A PROVEEDOR */}
+      {/* MODAL: PAGAR A PROVEEDOR */}
       {modalPagoProvAbierto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '28px', borderRadius: '18px', width: '100%', maxWidth: '540px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
@@ -1733,7 +1941,119 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal: Editar Precio de Compra a Edison */}
+      {/* MODAL: HISTORIAL ABONOS */}
+      {modalHistorialAbonos && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 130, padding: '16px' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '24px', borderRadius: '16px', width: '100%', maxWidth: '440px', border: `1px solid ${tema.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700' }}>Historial de Pagos</h3>
+                <p style={{ margin: '4px 0 0', color: tema.textMuted, fontSize: '13px' }}>Despacho #{modalHistorialAbonos.consecutivo}</p>
+              </div>
+              <button onClick={() => setModalHistorialAbonos(null)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+              {abonosDelEnvioModal.length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', color: tema.textMuted, fontSize: '13px' }}>
+                  No hay abonos registrados para este despacho.
+                </div>
+              ) : (
+                abonosDelEnvioModal.map(a => (
+                  <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', borderRadius: '10px', background: tema.inputBg, border: `1px solid ${tema.border}` }}>
+                    <div>
+                      <div style={{ fontWeight: 'bold', fontSize: '15px', color: '#22c55e' }}>{formatoCOP(a.monto)}</div>
+                      <div style={{ fontSize: '12px', color: tema.textMuted }}>{a.fecha} • {a.metodo_pago}</div>
+                      {a.notas && <div style={{ fontSize: '11px', color: tema.textMuted, marginTop: '2px' }}>{a.notas}</div>}
+                    </div>
+
+                    <button 
+                      onClick={() => eliminarAbono(a.id)}
+                      title="Anular este abono y devolver la deuda a pendiente"
+                      style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
+                    >
+                      <Trash2 size={13} /> Anular Pago
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setModalHistorialAbonos(null)} style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR DESPACHO COMPLETO */}
+      {modalEditarDespachoCompleto && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '28px', borderRadius: '18px', width: '100%', maxWidth: '520px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>Editar Datos del Despacho</h3>
+                <p style={{ margin: '4px 0 0', color: tema.textMuted, fontSize: '13px' }}>Modifica cualquier parámetro de esta cuenta de cobro</p>
+              </div>
+              <button onClick={() => setModalEditarDespachoCompleto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+
+            <form onSubmit={guardarEdicionDespacho} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Consecutivo</label>
+                  <input required value={formEdicion.consecutivo} onChange={(e) => setFormEdicion({...formEdicion, consecutivo: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Fecha Despacho</label>
+                  <input type="date" required value={formEdicion.fecha_envio} onChange={(e) => setFormEdicion({...formEdicion, fecha_envio: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#22c55e' }}>Número de Cajas</label>
+                  <input type="number" step="any" required value={formEdicion.cajas} onChange={(e) => setFormEdicion({...formEdicion, cajas: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box', fontSize: '16px', fontWeight: 'bold' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#22c55e' }}>Kilos Netos</label>
+                  <input type="number" step="any" required value={formEdicion.kilos} onChange={(e) => setFormEdicion({...formEdicion, kilos: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box', fontSize: '16px', fontWeight: 'bold' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Compra/Kg (Edison)</label>
+                  <input type="number" required value={formEdicion.precio_compra_kg} onChange={(e) => setFormEdicion({...formEdicion, precio_compra_kg: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#ef4444', borderRadius: '8px', fontWeight: 'bold', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Venta/Kg (Innovative)</label>
+                  <input type="number" required value={formEdicion.precio_venta_kg} onChange={(e) => setFormEdicion({...formEdicion, precio_venta_kg: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', borderRadius: '8px', fontWeight: 'bold', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Flete por Caja (Macareo)</label>
+                <input type="number" required value={formEdicion.costo_flete_caja} onChange={(e) => setFormEdicion({...formEdicion, costo_flete_caja: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: tema.textMuted }}>Notas / Observaciones</label>
+                <input value={formEdicion.notas} onChange={(e) => setFormEdicion({...formEdicion, notas: e.target.value})} placeholder="Opcional..." style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button type="button" onClick={() => setModalEditarDespachoCompleto(false)} style={{ padding: '10px 18px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '10px 20px', background: '#38bdf8', color: '#090d16', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar Cambios</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR PRECIO COMPRA EDISON */}
       {modalEditarPrecioCompra && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '24px', borderRadius: '16px', width: '100%', maxWidth: '380px', border: `1px solid ${tema.border}` }}>
@@ -1772,7 +2092,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal: Nuevo Despacho */}
+      {/* MODAL: NUEVO DESPACHO DIRECTO */}
       {modalAbierto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '28px', borderRadius: '18px', width: '100%', maxWidth: '540px', border: `1px solid ${tema.border}`, maxHeight: '92vh', overflowY: 'auto' }}>
@@ -1796,11 +2116,11 @@ export default function App() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#22c55e' }}>Número de Cajas *</label>
-                  <input type="number" step="any" required placeholder="0" autoFocus value={formData.cajas} onChange={(e) => setFormData({...formData, cajas: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box', fontSize: '16px', fontWeight: 'bold' }} />
+                  <input type="number" step="any" required placeholder="0" autoFocus value={formData.cajas} onChange={(e) => setFormData({...formData, cajas: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
                 </div>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#22c55e' }}>Kilos Netos *</label>
-                  <input type="number" step="any" required placeholder="0.00" value={formData.kilos} onChange={(e) => setFormData({...formData, kilos: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box', fontSize: '16px', fontWeight: 'bold' }} />
+                  <input type="number" step="any" required placeholder="0.00" value={formData.kilos} onChange={(e) => setFormData({...formData, kilos: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
                 </div>
               </div>
 
@@ -1835,7 +2155,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal: Registrar Abono Individual */}
+      {/* MODAL: ABONO INDIVIDUAL */}
       {modalAbonoAbierto && envioSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 110, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '24px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
