@@ -3,7 +3,7 @@
   "name": "Control de Aguacates & Tesorería",
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "/aguacate.svg",
       "type": "image/svg+xml",
       "sizes": "512x512",
       "purpose": "any maskable"
