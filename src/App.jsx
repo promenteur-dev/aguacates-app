@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabase';
 import { 
-  PlusCircle, Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
+  Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
   BarChart3, ListFilter, Search, DollarSign, CheckCircle2, 
   ArrowUpRight, Truck, Check, Edit2, FileText, Printer, Send, CheckSquare, Square,
-  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock
+  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Percent, Coins
 } from 'lucide-react';
 
 export default function App() {
@@ -31,6 +31,7 @@ export default function App() {
   const [modalNuevoPedido, setModalNuevoPedido] = useState(false);
   const [modalLiquidarPedido, setModalLiquidarPedido] = useState(null);
   const [modalPagarFletePedido, setModalPagarFletePedido] = useState(null);
+  const [modalPagarFrutaPedido, setModalPagarFrutaPedido] = useState(null);
   const [modalAbonoAbierto, setModalAbonoAbierto] = useState(false);
   const [modalAbonoMultipleAbierto, setModalAbonoMultipleAbierto] = useState(false);
   const [modalPagoProvAbierto, setModalPagoProvAbierto] = useState(false);
@@ -54,6 +55,12 @@ export default function App() {
 
   // Formulario Flete Pedido
   const [formFletePedido, setFormFletePedido] = useState({
+    monto: '',
+    fecha: new Date().toISOString().split('T')[0]
+  });
+
+  // Formulario Fruta Pedido (Edison)
+  const [formFrutaPedido, setFormFrutaPedido] = useState({
     monto: '',
     fecha: new Date().toISOString().split('T')[0]
   });
@@ -105,13 +112,12 @@ export default function App() {
   const [columnaOrden, setColumnaOrden] = useState('consecutivo');
   const [direccionOrden, setDireccionOrden] = useState('desc');
 
-  // Gráfico
+  // Gráfico Run Chart
   const [agrupacionRunChart, setAgrupacionRunChart] = useState('mes');
   const [seriesVisibles, setSeriesVisibles] = useState({
     venta: true,
     margen: true,
     costoFruta: true,
-    flete: false,
     saldo: false
   });
 
@@ -338,7 +344,9 @@ export default function App() {
       notas: formPedido.notas,
       estado_fase: 'solicitado',
       flete_pagado: false,
-      monto_flete_pagado: 0
+      monto_flete_pagado: 0,
+      fruta_pagada: false,
+      monto_fruta_pagado: 0
     }]);
 
     if (!error) {
@@ -349,6 +357,7 @@ export default function App() {
     }
   }
 
+  // Pagar Flete Macareo en Pedido
   function abrirModalFlete(pedido) {
     setModalPagarFletePedido(pedido);
     const montoCalculado = Number(pedido.cajas || 0) * Number(pedido.costo_flete_caja || 20000);
@@ -380,6 +389,37 @@ export default function App() {
     }
   }
 
+  // Pagar Fruta Edison en Pedido
+  function abrirModalFruta(pedido) {
+    setModalPagarFrutaPedido(pedido);
+    const montoCalculado = Number(pedido.cajas || 0) * 25 * Number(pedido.precio_compra_kg || 6000);
+    setFormFrutaPedido({
+      monto: pedido.monto_fruta_pagado && Number(pedido.monto_fruta_pagado) > 0 ? pedido.monto_fruta_pagado : montoCalculado,
+      fecha: pedido.fecha_pago_fruta || new Date().toISOString().split('T')[0]
+    });
+  }
+
+  async function guardarFrutaPedido(e) {
+    e.preventDefault();
+    if (!modalPagarFrutaPedido) return;
+
+    const { error } = await supabase
+      .from('pedidos')
+      .update({
+        fruta_pagada: true,
+        monto_fruta_pagado: Number(formFrutaPedido.monto),
+        fecha_pago_fruta: formFrutaPedido.fecha
+      })
+      .eq('id', modalPagarFrutaPedido.id);
+
+    if (!error) {
+      setModalPagarFrutaPedido(null);
+      await cargarDatos();
+    } else {
+      alert('Error guardando pago a Edison: ' + error.message);
+    }
+  }
+
   function iniciarLiquidacionPedido(pedidoItem) {
     setModalLiquidarPedido(pedidoItem);
     setFormLiquidar({
@@ -408,6 +448,7 @@ export default function App() {
     if (!errorEnvio && envioCreado && envioCreado.length > 0) {
       const nuevoId = envioCreado[0].id;
 
+      // Transferir pago Macareo si fue pagado antes
       if (modalLiquidarPedido.flete_pagado) {
         const provMacareo = proveedores.find(p => p.tipo === 'transporte');
         if (provMacareo) {
@@ -418,6 +459,21 @@ export default function App() {
             fecha: modalLiquidarPedido.fecha_pago_flete || formLiquidar.fecha_envio,
             concepto: 'transporte',
             notas: `Flete cancelado al despachar (#${modalLiquidarPedido.consecutivo})`
+          }]);
+        }
+      }
+
+      // Transferir pago Edison si fue pagado antes
+      if (modalLiquidarPedido.fruta_pagada) {
+        const provEdison = proveedores.find(p => p.tipo !== 'transporte');
+        if (provEdison) {
+          await supabase.from('pagos_proveedor').insert([{
+            proveedor_id: provEdison.id,
+            envio_id: nuevoId,
+            monto: Number(modalLiquidarPedido.monto_fruta_pagado || (modalLiquidarPedido.cajas * 25 * modalLiquidarPedido.precio_compra_kg)),
+            fecha: modalLiquidarPedido.fecha_pago_fruta || formLiquidar.fecha_envio,
+            concepto: 'fruta',
+            notas: `Fruta cancelada anticipadamente (#${modalLiquidarPedido.consecutivo})`
           }]);
         }
       }
@@ -680,9 +736,13 @@ export default function App() {
     .filter(p => p.concepto === 'transporte')
     .reduce((acc, p) => acc + Number(p.monto || 0), 0);
 
-  const deudaEdison = Math.max(0, totalCostoFruta - pagadoFruta);
+  // Deuda Edison considera pedidos activos si no se han pagado
+  const frutaPedidosPendientes = pedidos
+    .filter(p => p.estado !== 'liquidado' && !p.fruta_pagada)
+    .reduce((sum, p) => sum + (Number(p.cajas || 0) * 25 * Number(p.precio_compra_kg || 6000)), 0);
+
+  const deudaEdison = Math.max(0, totalCostoFruta - pagadoFruta) + frutaPedidosPendientes;
   
-  // Fletes pendientes: despachos liquidados + pedidos activos sin flete pago
   const fletesPedidosPendientes = pedidos
     .filter(p => p.estado !== 'liquidado' && !p.flete_pagado)
     .reduce((sum, p) => sum + (Number(p.cajas || 0) * Number(p.costo_flete_caja || 20000)), 0);
@@ -738,7 +798,6 @@ export default function App() {
     return Array.from(meses).sort().reverse();
   }, [envios]);
 
-  // Cruzar pedidos y asegurar sus datos
   const pedidosPendientesConConsecutivo = useMemo(() => {
     const pedidosActivos = pedidos.filter(p => p.estado !== 'liquidado');
     return pedidosActivos.map((p, idx) => {
@@ -802,7 +861,11 @@ export default function App() {
   const totalCajas = enviosParaMetricas.reduce((acc, r) => acc + Number(r.cajas || 0), 0);
   const promedioMargenDespacho = enviosParaMetricas.length > 0 ? (margenTotal / enviosParaMetricas.length) : 0;
 
-  // CÁLCULO DE MERMA REAL
+  // Analítica adicional útil
+  const margenPromedioPorKilo = totalKilos > 0 ? (margenTotal / totalKilos) : 0;
+  const totalFacturadoAnalitica = enviosParaMetricas.reduce((acc, r) => acc + Number(r.total_facturado_cliente || 0), 0);
+  const porcentajeRentabilidadGlobal = totalFacturadoAnalitica > 0 ? ((margenTotal / totalFacturadoAnalitica) * 100) : 0;
+
   const metricaMerma = useMemo(() => {
     const kilosTeoricosEdison = enviosParaMetricas.reduce((acc, e) => acc + (Number(e.cajas || 0) * 25), 0);
     const kilosRealesBascula = enviosParaMetricas.reduce((acc, e) => acc + Number(e.kilos || 0), 0);
@@ -822,76 +885,63 @@ export default function App() {
     return abonosCliente.filter(a => a.envio_id === modalHistorialAbonos.id);
   }, [modalHistorialAbonos, abonosCliente]);
 
-  const datosAgrupados = useMemo(() => {
-    if (agrupacionRunChart === 'envio') {
-      return [...enviosFiltrados].sort((a,b) => a.consecutivo.localeCompare(b.consecutivo)).map((e) => ({
-        label: `#${e.consecutivo}`,
-        fecha: e.fecha_envio,
-        venta: Number(e.total_facturado_cliente || 0),
-        margen: Number(e.margen_bruto || 0),
-        costoFruta: Number(e.total_compra_fruta || 0),
-        flete: Number(e.total_flete || 0),
-        saldo: Number(e.saldo_pendiente || 0)
-      }));
-    }
-
+  // CÁLCULO MENSUAL PARA EL RUN CHART MEJORADO
+  const datosGrafico = useMemo(() => {
     const mapa = {};
     enviosFiltrados.forEach(e => {
       let clave = e.fecha_envio;
-      let labelLegible = e.fecha_envio;
+      let label = e.fecha_envio;
 
       if (agrupacionRunChart === 'mes') {
         clave = e.fecha_envio.substring(0, 7);
         const [y, m] = clave.split('-');
         const nombresCortos = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-        labelLegible = `${nombresCortos[parseInt(m, 10) - 1]} ${y}`;
+        label = `${nombresCortos[parseInt(m, 10) - 1]} ${y}`;
       }
       if (agrupacionRunChart === 'ano') {
         clave = e.fecha_envio.substring(0, 4);
-        labelLegible = clave;
+        label = clave;
       }
       if (agrupacionRunChart === 'semana') {
         const d = new Date(e.fecha_envio);
         const inicioAno = new Date(d.getFullYear(), 0, 1);
         const sem = Math.ceil((((d - inicioAno) / 86400000) + inicioAno.getDay() + 1) / 7);
         clave = `${d.getFullYear()}-W${sem}`;
-        labelLegible = `Sem ${sem}`;
+        label = `Sem ${sem}`;
       }
 
       if (!mapa[clave]) {
-        mapa[clave] = { label: labelLegible, venta: 0, margen: 0, costoFruta: 0, flete: 0, saldo: 0, claveSort: clave };
+        mapa[clave] = { clave, label, venta: 0, margen: 0, costoFruta: 0, kilos: 0, count: 0 };
       }
       mapa[clave].venta += Number(e.total_facturado_cliente || 0);
       mapa[clave].margen += Number(e.margen_bruto || 0);
       mapa[clave].costoFruta += Number(e.total_compra_fruta || 0);
-      mapa[clave].flete += Number(e.total_flete || 0);
-      mapa[clave].saldo += Number(e.saldo_pendiente || 0);
+      mapa[clave].kilos += Number(e.kilos || 0);
+      mapa[clave].count += 1;
     });
 
-    return Object.values(mapa).sort((a,b) => a.claveSort?.localeCompare(b.claveSort));
+    return Object.values(mapa).sort((a, b) => a.clave.localeCompare(b.clave));
   }, [enviosFiltrados, agrupacionRunChart]);
 
-  const chartWidth = 720;
-  const chartHeight = 260;
-  const padX = 40;
-  const padY = 30;
+  const chartWidth = 780;
+  const chartHeight = 280;
+  const padX = 60;
+  const padY = 40;
 
   const maxGrafico = useMemo(() => {
-    let max = 100000;
-    datosAgrupados.forEach(d => {
-      if (seriesVisibles.venta && d.venta > max) max = d.venta;
-      if (seriesVisibles.margen && d.margen > max) max = d.margen;
-      if (seriesVisibles.costoFruta && d.costoFruta > max) max = d.costoFruta;
-      if (seriesVisibles.flete && d.flete > max) max = d.flete;
-      if (seriesVisibles.saldo && d.saldo > max) max = d.saldo;
+    let max = 1000000;
+    datosGrafico.forEach(d => {
+      if (d.venta > max) max = d.venta;
+      if (d.costoFruta > max) max = d.costoFruta;
+      if (d.margen > max) max = d.margen;
     });
-    return max * 1.1;
-  }, [datosAgrupados, seriesVisibles]);
+    return max * 1.15;
+  }, [datosGrafico]);
 
   function generarPath(clave) {
-    if (datosAgrupados.length === 0) return '';
-    return datosAgrupados.map((d, i) => {
-      const x = padX + (i / (datosAgrupados.length > 1 ? datosAgrupados.length - 1 : 1)) * (chartWidth - padX * 2);
+    if (datosGrafico.length === 0) return '';
+    return datosGrafico.map((d, i) => {
+      const x = padX + (i / (datosGrafico.length > 1 ? datosGrafico.length - 1 : 1)) * (chartWidth - padX * 2);
       const y = chartHeight - padY - (d[clave] / maxGrafico) * (chartHeight - padY * 2);
       return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
     }).join(' ');
@@ -931,7 +981,7 @@ export default function App() {
   const montoRecibidoNum = Number(montoRealRecibido || totalSeleccionadoAbonoMultiple);
   const diferenciaDescuento = Math.max(0, totalSeleccionadoAbonoMultiple - montoRecibidoNum);
 
-  // ==================== PANTALLA DE BLOQUEO BIOMÉTRICO ====================
+  // Pantalla de bloqueo
   if (!autenticado) {
     return (
       <div style={{ minHeight: '100vh', background: '#090d16', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -1073,7 +1123,7 @@ export default function App() {
             {formatoCOP(deudaMacareo)}
           </div>
           <div style={{ fontSize: '10px', color: deudaMacareo === 0 ? '#22c55e' : '#f97316', marginTop: '2px', fontWeight: '600' }}>
-            {deudaMacareo === 0 ? '✅ Fletes al día ($0)' : `⚠️ Pendiente flete (#594)`}
+            {deudaMacareo === 0 ? '✅ Fletes al día ($0)' : '⚠️ Flete pendiente'}
           </div>
         </div>
 
@@ -1099,7 +1149,7 @@ export default function App() {
           </div>
           <div style={{ fontSize: '18px', fontWeight: '800', color: '#22c55e', marginTop: '4px' }}>{formatoCOP(margenTotal)}</div>
           <div style={{ fontSize: '10px', color: tema.textMuted, marginTop: '2px' }}>
-            Prom: {formatoCOP(promedioMargenDespacho)}/env
+            {formatoCOP(margenPromedioPorKilo)} / Kg ({porcentajeRentabilidadGlobal.toFixed(1)}%)
           </div>
         </div>
 
@@ -1144,19 +1194,21 @@ export default function App() {
           Registros ({enviosFiltrados.length + pedidosPendientesConConsecutivo.length})
         </button>
         <button onClick={() => setPestanaActiva('dashboard')} style={{ flex: 1, padding: '8px', background: pestanaActiva === 'dashboard' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'dashboard' ? '#38bdf8' : tema.border}`, borderRadius: '8px', color: pestanaActiva === 'dashboard' ? '#38bdf8' : tema.textMuted, fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
-          Gráfica
+          Run Chart & Analítica
         </button>
       </div>
 
-      {/* VISTA REGISTROS */}
+      {/* VISTA 1: REGISTROS */}
       {pestanaActiva === 'registros' && (
         esMovil ? (
           /* ==================== VISTA MÓVIL EN TARJETAS ==================== */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {/* PEDIDOS EN FASE 1 Y 2 */}
             {pedidosPendientesConConsecutivo.map((p) => {
               const costoFleteTotal = Number(p.cajas || 0) * Number(p.costo_flete_caja || 20000);
+              const costoFrutaTotal = Number(p.cajas || 0) * 25 * Number(p.precio_compra_kg || 6000);
               const fletePago = p.flete_pagado;
+              const frutaPaga = p.fruta_pagada;
+              const esEnRuta = p.estado_fase === 'en_ruta';
 
               return (
                 <div 
@@ -1165,19 +1217,32 @@ export default function App() {
                     background: tema.cardBg,
                     borderRadius: '14px',
                     padding: '14px',
-                    border: '1px solid rgba(234, 179, 8, 0.4)',
-                    borderLeft: '4px solid #eab308'
+                    border: esEnRuta ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid rgba(234, 179, 8, 0.4)',
+                    borderLeft: `5px solid ${esEnRuta ? '#38bdf8' : '#eab308'}`
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontWeight: '900', fontSize: '17px', color: '#eab308' }}>#{p.consecutivo}</span>
-                        <span style={{ padding: '2px 6px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', borderRadius: '4px', fontSize: '10px', fontWeight: '800' }}>
-                          {fletePago ? '🚚 EN RUTA' : '🟡 SOLICITADO'}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: '900', fontSize: '17px', color: esEnRuta ? '#38bdf8' : '#eab308' }}>#{p.consecutivo}</span>
+                        
+                        {/* Insignia con color diferenciado */}
+                        <span style={{ 
+                          padding: '3px 8px', 
+                          borderRadius: '6px', 
+                          fontSize: '11px', 
+                          fontWeight: '800',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: esEnRuta ? 'rgba(56, 189, 248, 0.18)' : 'rgba(234, 179, 8, 0.18)',
+                          color: esEnRuta ? '#38bdf8' : '#eab308',
+                          border: `1px solid ${esEnRuta ? '#38bdf8' : '#eab308'}`
+                        }}>
+                          {esEnRuta ? '🚚 EN RUTA' : '🟡 SOLICITADO'}
                         </span>
                       </div>
-                      <div style={{ fontSize: '12px', color: tema.textMuted, marginTop: '2px' }}>Fecha: {p.fecha_pedido}</div>
+                      <div style={{ fontSize: '12px', color: tema.textMuted, marginTop: '2px' }}>Fecha: {p.fecha_pedido} • {p.cajas} cajas</div>
                     </div>
 
                     <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308' }}>
@@ -1185,38 +1250,62 @@ export default function App() {
                     </span>
                   </div>
 
+                  {/* Estado de deudas independientes en tarjeta */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>
                     <div>
-                      <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{p.cajas} cajas</b><br />
-                      <span style={{ color: tema.textMuted }}>Compra Edison:</span> <b style={{ color: '#ef4444' }}>{formatoCOP(p.precio_compra_kg)}/Kg</b>
+                      <span style={{ color: tema.textMuted }}>Fruta Edison:</span><br />
+                      {frutaPaga ? (
+                        <b style={{ color: '#22c55e' }}>✅ PAGA ({formatoCOP(p.monto_fruta_pagado || costoFrutaTotal)})</b>
+                      ) : (
+                        <b style={{ color: '#ef4444' }}>⚠️ PEND ({formatoCOP(costoFrutaTotal)})</b>
+                      )}
                     </div>
                     <div>
                       <span style={{ color: tema.textMuted }}>Flete Macareo:</span><br />
                       {fletePago ? (
                         <b style={{ color: '#22c55e' }}>✅ PAGO ({formatoCOP(p.monto_flete_pagado || costoFleteTotal)})</b>
                       ) : (
-                        <b style={{ color: '#f97316' }}>⚠️ PENDIENTE ({formatoCOP(costoFleteTotal)})</b>
+                        <b style={{ color: '#f97316' }}>⚠️ PEND ({formatoCOP(costoFleteTotal)})</b>
                       )}
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  {/* Botones de acción directa para el pulgar */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                    {!frutaPaga ? (
+                      <button
+                        onClick={() => abrirModalFruta(p)}
+                        style={{ padding: '9px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                      >
+                        <Coins size={13} /> Pagar Edison
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => abrirModalFruta(p)}
+                        style={{ padding: '9px', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' }}
+                      >
+                        Fruta Paga
+                      </button>
+                    )}
+
                     {!fletePago ? (
                       <button
                         onClick={() => abrirModalFlete(p)}
-                        style={{ flex: 1, padding: '10px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                        style={{ padding: '9px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       >
-                        <Truck size={14} /> Pagar Flete
+                        <Truck size={13} /> Pagar Macareo
                       </button>
                     ) : (
                       <button
                         onClick={() => abrirModalFlete(p)}
-                        style={{ padding: '8px 10px', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' }}
+                        style={{ padding: '9px', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' }}
                       >
                         Flete Pago
                       </button>
                     )}
+                  </div>
 
+                  <div style={{ display: 'flex', gap: '8px' }}>
                     <button
                       onClick={() => iniciarLiquidacionPedido(p)}
                       style={{ flex: 1, padding: '10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
@@ -1341,8 +1430,8 @@ export default function App() {
                   <th onClick={() => handleOrdenar('fecha_envio')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Fecha</th>
                   <th onClick={() => handleOrdenar('cajas')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Cajas</th>
                   <th onClick={() => handleOrdenar('kilos')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Kilos</th>
+                  <th>Compra Edison</th>
                   <th>Flete Macareo</th>
-                  <th onClick={() => handleOrdenar('precio_compra_kg')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Compra Edison</th>
                   <th onClick={() => handleOrdenar('total_facturado_cliente')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Facturado</th>
                   <th onClick={() => handleOrdenar('saldo_pendiente')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Saldo Innovative</th>
                   <th onClick={() => handleOrdenar('margen_bruto')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Margen</th>
@@ -1352,18 +1441,41 @@ export default function App() {
               <tbody>
                 {pedidosPendientesConConsecutivo.map((p) => {
                   const costoFleteTotal = Number(p.cajas || 0) * Number(p.costo_flete_caja || 20000);
+                  const costoFrutaTotal = Number(p.cajas || 0) * 25 * Number(p.precio_compra_kg || 6000);
                   const fletePago = p.flete_pagado;
+                  const frutaPaga = p.fruta_pagada;
+                  const esEnRuta = p.estado_fase === 'en_ruta';
 
                   return (
-                    <tr key={p.id} style={{ borderBottom: `1px solid ${tema.rowBorder}`, background: 'rgba(234, 179, 8, 0.08)', borderLeft: '3px solid #eab308' }}>
-                      <td style={{ padding: '12px 14px', textAlign: 'center' }}><Clock size={16} color="#eab308" /></td>
-                      <td style={{ padding: '12px 14px', fontWeight: 'bold', color: '#eab308' }}>
+                    <tr key={p.id} style={{ borderBottom: `1px solid ${tema.rowBorder}`, background: esEnRuta ? 'rgba(56, 189, 248, 0.08)' : 'rgba(234, 179, 8, 0.08)', borderLeft: `4px solid ${esEnRuta ? '#38bdf8' : '#eab308'}` }}>
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}><Clock size={16} color={esEnRuta ? '#38bdf8' : '#eab308'} /></td>
+                      <td style={{ padding: '12px 14px', fontWeight: 'bold', color: esEnRuta ? '#38bdf8' : '#eab308' }}>
                         #{p.consecutivo}
-                        <div style={{ fontSize: '10px' }}>{fletePago ? '🚚 EN RUTA' : '🟡 SOLICITADO'}</div>
+                        <div style={{ 
+                          fontSize: '10px', 
+                          fontWeight: '800', 
+                          color: esEnRuta ? '#38bdf8' : '#eab308',
+                          marginTop: '2px' 
+                        }}>
+                          {esEnRuta ? '🚚 EN RUTA' : '🟡 SOLICITADO'}
+                        </div>
                       </td>
                       <td style={{ padding: '12px 14px', color: tema.textMuted }}>{p.fecha_pedido}</td>
                       <td style={{ padding: '12px 14px', fontWeight: 'bold' }}>{p.cajas} cajas</td>
                       <td style={{ padding: '12px 14px' }}><span style={{ padding: '3px 6px', borderRadius: '4px', fontSize: '11px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', fontWeight: 'bold' }}>⏳ Por pesar</span></td>
+                      
+                      {/* Edison */}
+                      <td style={{ padding: '12px 14px' }}>
+                        {frutaPaga ? (
+                          <span style={{ color: '#22c55e', fontWeight: 'bold' }}>✅ Paga ({formatoCOP(p.monto_fruta_pagado || costoFrutaTotal)})</span>
+                        ) : (
+                          <button onClick={() => abrirModalFruta(p)} style={{ padding: '4px 8px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+                            Pagar {formatoCOP(costoFrutaTotal)}
+                          </button>
+                        )}
+                      </td>
+
+                      {/* Macareo */}
                       <td style={{ padding: '12px 14px' }}>
                         {fletePago ? (
                           <span style={{ color: '#22c55e', fontWeight: 'bold' }}>✅ Pago ({formatoCOP(p.monto_flete_pagado || costoFleteTotal)})</span>
@@ -1373,7 +1485,7 @@ export default function App() {
                           </button>
                         )}
                       </td>
-                      <td style={{ padding: '12px 14px', color: '#ef4444', fontWeight: 'bold' }}>{formatoCOP(p.precio_compra_kg)}</td>
+
                       <td style={{ padding: '12px 14px', color: tema.textMuted }}>Báscula pendiente</td>
                       <td style={{ padding: '12px 14px', color: '#eab308', fontWeight: 'bold' }}>Por cobrar</td>
                       <td style={{ padding: '12px 14px', color: tema.textMuted }}>-</td>
@@ -1391,6 +1503,7 @@ export default function App() {
                   );
                 })}
 
+                {/* Despachos */}
                 {enviosFiltrados.map((r) => {
                   const saldo = Number(r.saldo_pendiente || 0);
                   const estaSeleccionado = seleccionadosTabla.includes(r.id);
@@ -1409,12 +1522,12 @@ export default function App() {
                       <td style={{ padding: '12px 14px', color: tema.textMuted }}>{r.fecha_envio}</td>
                       <td style={{ padding: '12px 14px' }}>{r.cajas}</td>
                       <td style={{ padding: '12px 14px' }}>{r.kilos} Kg</td>
-                      <td style={{ padding: '12px 14px', color: '#22c55e', fontWeight: '600' }}>{formatoCOP(r.total_flete)}</td>
-                      <td style={{ padding: '12px 14px' }}>
+                      <td style={{ padding: '12px 14px', color: '#ef4444', fontWeight: 'bold' }}>
                         <button onClick={() => setModalEditarPrecioCompra(r)} style={{ background: 'transparent', border: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}>
                           {formatoCOP(r.precio_compra_kg)} <Edit2 size={11} color={tema.textMuted} />
                         </button>
                       </td>
+                      <td style={{ padding: '12px 14px', color: '#22c55e', fontWeight: '600' }}>{formatoCOP(r.total_flete)}</td>
                       <td style={{ padding: '12px 14px', fontWeight: '600' }}>{formatoCOP(r.total_facturado_cliente)}</td>
                       <td style={{ padding: '12px 14px', fontWeight: 'bold', color: saldo > 0 ? '#f97316' : '#22c55e' }}>{formatoCOP(saldo)}</td>
                       <td style={{ padding: '12px 14px', color: '#38bdf8', fontWeight: '600' }}>{formatoCOP(r.margen_bruto)}</td>
@@ -1449,52 +1562,112 @@ export default function App() {
         )
       )}
 
-      {/* VISTA GRÁFICO */}
+      {/* ==================== VISTA 2: RUN CHART CLARO & ANALÍTICA ==================== */}
       {pestanaActiva === 'dashboard' && (
-        <div style={{ background: tema.cardBg, padding: '16px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700' }}>Run Chart</h3>
-            <div style={{ display: 'flex', gap: '4px', background: tema.inputBg, padding: '2px', borderRadius: '6px' }}>
-              {['envio', 'semana', 'mes', 'ano'].map(modo => (
-                <button
-                  key={modo}
-                  onClick={() => setAgrupacionRunChart(modo)}
-                  style={{
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    background: agrupacionRunChart === modo ? '#38bdf8' : 'transparent',
-                    color: agrupacionRunChart === modo ? '#090d16' : tema.textMuted,
-                    border: 'none'
-                  }}
-                >
-                  {modo}
-                </button>
-              ))}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
+          {/* Tarjetas Analíticas Clave */}
+          <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '10px' }}>
+            <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>MARGEN PROMEDIO / KG</span>
+              <div style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', marginTop: '4px' }}>
+                {formatoCOP(margenPromedioPorKilo)}
+              </div>
+              <span style={{ fontSize: '11px', color: tema.textMuted }}>Ganancia neta por cada kilo vendido</span>
+            </div>
+
+            <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>RENTABILIDAD GLOBAL</span>
+              <div style={{ fontSize: '20px', fontWeight: '900', color: '#38bdf8', marginTop: '4px' }}>
+                {porcentajeRentabilidadGlobal.toFixed(1)}%
+              </div>
+              <span style={{ fontSize: '11px', color: tema.textMuted }}>Margen bruto sobre venta total</span>
+            </div>
+
+            <div style={{ gridColumn: esMovil ? 'span 2' : 'auto', background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>FRUTA TOTAL MOVIDA</span>
+              <div style={{ fontSize: '20px', fontWeight: '900', color: tema.textMain, marginTop: '4px' }}>
+                {Number(totalKilos).toFixed(1)} Kg en {totalCajas} cajas
+              </div>
+              <span style={{ fontSize: '11px', color: tema.textMuted }}>Promedio: {(totalKilos / (totalCajas || 1)).toFixed(2)} Kg por caja</span>
             </div>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ width: '100%', height: 'auto', minWidth: '550px' }}>
-              <line x1={padX} y1={chartHeight - padY} x2={chartWidth - padX} y2={chartHeight - padY} stroke={tema.chartGrid} />
-              {seriesVisibles.venta && <path d={generarPath('venta')} fill="none" stroke="#3b82f6" strokeWidth="2" />}
-              {seriesVisibles.margen && <path d={generarPath('margen')} fill="none" stroke="#22c55e" strokeWidth="2.5" />}
-              {seriesVisibles.costoFruta && <path d={generarPath('costoFruta')} fill="none" stroke="#ef4444" strokeWidth="2" strokeDasharray="4 2" />}
+          {/* Gráfico Run Chart con Leyenda y Ejes Claros */}
+          <div style={{ background: tema.cardBg, padding: '20px', borderRadius: '16px', border: `1px solid ${tema.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Evolución Financiera Histórica</h3>
+                <p style={{ margin: '3px 0 0', color: tema.textMuted, fontSize: '12px' }}>Comparativo directo de Facturación vs Costo de Fruta vs Ganancia Real</p>
+              </div>
 
-              {datosAgrupados.map((d, i) => {
-                const x = padX + (i / (datosAgrupados.length > 1 ? datosAgrupados.length - 1 : 1)) * (chartWidth - padX * 2);
-                const yMargen = chartHeight - padY - (d.margen / maxGrafico) * (chartHeight - padY * 2);
-                return (
-                  <g key={i}>
-                    <circle cx={x} cy={yMargen} r="4" fill="#22c55e" />
-                    <text x={x} y={chartHeight - padY + 16} fill={tema.textMuted} fontSize="10" textAnchor="middle">{d.label}</text>
-                  </g>
-                );
-              })}
-            </svg>
+              <div style={{ display: 'flex', gap: '4px', background: tema.inputBg, padding: '2px', borderRadius: '6px' }}>
+                {['envio', 'semana', 'mes', 'ano'].map(modo => (
+                  <button
+                    key={modo}
+                    onClick={() => setAgrupacionRunChart(modo)}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      background: agrupacionRunChart === modo ? '#38bdf8' : 'transparent',
+                      color: agrupacionRunChart === modo ? '#090d16' : tema.textMuted,
+                      border: 'none'
+                    }}
+                  >
+                    {modo}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* LEYENDA CLARA DE QUÉ ES CADA LÍNEA */}
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '14px', padding: '10px 14px', background: darkMode ? '#0b1120' : '#f8fafc', borderRadius: '10px', border: `1px solid ${tema.border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#38bdf8' }}>
+                <span style={{ width: '12px', height: '3px', background: '#38bdf8', borderRadius: '2px' }}></span> 🔵 Facturado Cliente (Innovative)
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#ef4444' }}>
+                <span style={{ width: '12px', height: '3px', background: '#ef4444', borderRadius: '2px', borderBottom: '1px dashed #ef4444' }}></span> 🔴 Costo Fruta (Edison)
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#22c55e' }}>
+                <span style={{ width: '12px', height: '3px', background: '#22c55e', borderRadius: '2px' }}></span> 🟢 Margen Bruto (Ganancia Neta)
+              </div>
+            </div>
+
+            {datosGrafico.length === 0 ? (
+              <div style={{ padding: '30px', textAlign: 'center', color: tema.textMuted }}>Sin datos para graficar.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ width: '100%', height: 'auto', minWidth: '550px' }}>
+                  {/* Líneas guía de fondo */}
+                  <line x1={padX} y1={padY} x2={chartWidth - padX} y2={padY} stroke={tema.chartGrid} strokeDasharray="3 3" />
+                  <line x1={padX} y1={(chartHeight - padY * 2) / 2 + padY} x2={chartWidth - padX} y2={(chartHeight - padY * 2) / 2 + padY} stroke={tema.chartGrid} strokeDasharray="3 3" />
+                  <line x1={padX} y1={chartHeight - padY} x2={chartWidth - padX} y2={chartHeight - padY} stroke={tema.chartGrid} />
+
+                  {/* Curvas de datos */}
+                  {seriesVisibles.venta && <path d={generarPath('venta')} fill="none" stroke="#38bdf8" strokeWidth="2.5" />}
+                  {seriesVisibles.costoFruta && <path d={generarPath('costoFruta')} fill="none" stroke="#ef4444" strokeWidth="2" strokeDasharray="4 2" />}
+                  {seriesVisibles.margen && <path d={generarPath('margen')} fill="none" stroke="#22c55e" strokeWidth="3" />}
+
+                  {/* Puntos y valores */}
+                  {datosGrafico.map((d, i) => {
+                    const x = padX + (i / (datosGrafico.length > 1 ? datosGrafico.length - 1 : 1)) * (chartWidth - padX * 2);
+                    const yMargen = chartHeight - padY - (d.margen / maxGrafico) * (chartHeight - padY * 2);
+                    return (
+                      <g key={i}>
+                        <circle cx={x} cy={yMargen} r="4.5" fill="#22c55e" stroke={tema.cardBg} strokeWidth="1.5" />
+                        <text x={x} y={yMargen - 8} fill="#22c55e" fontSize="10" fontWeight="bold" textAnchor="middle">{formatoCOP(d.margen)}</text>
+                        <text x={x} y={chartHeight - padY + 16} fill={tema.textMuted} fontSize="10" textAnchor="middle">{d.label}</text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+            )}
           </div>
+
         </div>
       )}
 
@@ -1525,6 +1698,39 @@ export default function App() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
                 <button type="button" onClick={() => setModalPagarFletePedido(null)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
                 <button type="submit" style={{ padding: '8px 16px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Confirmar Pago Flete</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PAGAR FRUTA A EDISON */}
+      {modalPagarFrutaPedido && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '380px', border: `1px solid ${tema.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Pagar Fruta a Edison</h3>
+              <button onClick={() => setModalPagarFrutaPedido(null)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>
+              <span>Pedido: <b>#{modalPagarFrutaPedido.consecutivo}</b> ({modalPagarFrutaPedido.cajas} cajas • 25 Kg/cja)</span>
+            </div>
+
+            <form onSubmit={guardarFrutaPedido} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: tema.textMuted }}>Fecha del Pago</label>
+                <input type="date" required value={formFrutaPedido.fecha} onChange={(e) => setFormFrutaPedido({...formFrutaPedido, fecha: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#ef4444' }}>Monto Pagado a Edison (COP)</label>
+                <input type="number" step="any" required autoFocus value={formFrutaPedido.monto} onChange={(e) => setFormFrutaPedido({...formFrutaPedido, monto: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: '1px solid #ef4444', color: '#ef4444', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button type="button" onClick={() => setModalPagarFrutaPedido(null)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Confirmar Pago Fruta</button>
               </div>
             </form>
           </div>
