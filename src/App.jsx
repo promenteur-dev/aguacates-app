@@ -5,7 +5,7 @@ import {
   Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
   BarChart3, ListFilter, Search, DollarSign, CheckCircle2, 
   ArrowUpRight, Truck, Check, Edit2, FileText, Download, Send, CheckSquare, Square,
-  ArrowUpDown, ArrowUp, ArrowDown, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins, Share2, AlertTriangle
+  ArrowUpDown, ArrowUp, ArrowDown, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins, Share2, AlertTriangle, Layers
 } from 'lucide-react';
 
 export default function App() {
@@ -284,7 +284,6 @@ export default function App() {
     document.body.removeChild(link);
   }
 
-  // CÁLCULO DE DÍAS TRANSCURRIDOS Y SEMÁFORO
   function calcularDiasCartera(fechaEnvio) {
     if (!fechaEnvio) return 0;
     const diffTime = Math.abs(new Date() - new Date(fechaEnvio));
@@ -297,11 +296,30 @@ export default function App() {
     return { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.18)', texto: 'Vencido' };
   }
 
-  // MENSAJE DE COBRO RECORDATORIO DIRECTO POR WHATSAPP
-  function enviarRecordatorioCartera(envio) {
-    const dias = calcularDiasCartera(envio.fecha_envio);
-    const mensaje = `Hola, cordial saludo. Me comunico para consultar el estado de programación de pago de la *Cuenta de Cobro #${envio.consecutivo}* con fecha ${envio.fecha_envio} (${dias} días) por saldo pendiente de *${formatoCOP(envio.saldo_pendiente)}*.%0A%0A¿Me confirman si sale en el corte de esta semana? Quedo muy atento, muchas gracias.`;
-    window.open(`https://api.whatsapp.com/send?text=${mensaje}`, '_blank');
+  // MENSAJE DE COBRO CONSOLIDADO GLOBAL POR WHATSAPP
+  function cobrarCarteraCompletaWhatsApp() {
+    const pendientes = envios.filter(e => Number(e.saldo_pendiente || 0) > 0);
+    if (pendientes.length === 0) {
+      alert('¡Excelente! No hay facturas pendientes de cobro.');
+      return;
+    }
+
+    const totalSaldo = pendientes.reduce((acc, e) => acc + Number(e.saldo_pendiente || 0), 0);
+    const detalleCuentas = pendientes.map(e => {
+      const dias = calcularDiasCartera(e.fecha_envio);
+      return `• *#${e.consecutivo}* (${e.fecha_envio}): ${formatoCOP(e.saldo_pendiente)} [${dias} días]`;
+    }).join('%0A');
+
+    const texto = `Hola, cordial saludo.%0A%0A` +
+      `Me comunico para consultar el estado de programación de pago de las siguientes *Cuentas de Cobro* pendientes:%0A%0A` +
+      `${detalleCuentas}%0A%0A` +
+      `📌 *TOTAL PENDIENTE: ${formatoCOP(totalSaldo)}*%0A%0A` +
+      `💳 *Datos Bancarios:*%0A` +
+      `Bancolombia Ahorros # 554 879 253 72%0A` +
+      `Elkin Bohórquez Tarud - CC 72.271.189%0A%0A` +
+      `¿Me confirman, por favor, si entran en el corte de pago de esta semana? Quedo muy atento. ¡Muchas gracias!`;
+
+    window.open(`https://api.whatsapp.com/send?text=${texto}`, '_blank');
   }
 
   function abrirModalCuentaSeguro(r) {
@@ -325,7 +343,6 @@ export default function App() {
     });
   }
 
-  // GENERAR PDF DE EXACTAMENTE 1 PÁGINA MEDIANTE JSPDF
   function crearPDFDocumento(envio) {
     const doc = new jsPDF({ format: 'letter', unit: 'mm' });
     const kilos = Number(envio.kilos_calc || envio.kilos || 0);
@@ -335,7 +352,6 @@ export default function App() {
     const vFlete = Number(envio.total_flete_calc || envio.total_flete || (cajas * 32000));
     const vTotal = Number(envio.total_facturado_calc || envio.total_facturado_cliente || (vFruta + vFlete));
 
-    // Título
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
     doc.text(`CUENTA DE COBRO # ${envio.consecutivo}`, 105, 25, { align: 'center' });
@@ -349,7 +365,6 @@ export default function App() {
     doc.setLineWidth(0.6);
     doc.line(20, 36, 195, 36);
 
-    // Datos partes
     doc.setFontSize(10);
     doc.setTextColor(15, 23, 42);
     doc.setFont('helvetica', 'bold');
@@ -362,7 +377,6 @@ export default function App() {
     doc.setFont('helvetica', 'normal');
     doc.text('C.C. 72.271.189', 195, 52, { align: 'right' });
 
-    // Encabezado de tabla
     doc.setFillColor(241, 245, 249);
     doc.rect(20, 62, 175, 8, 'F');
     doc.setFont('helvetica', 'bold');
@@ -371,7 +385,6 @@ export default function App() {
     doc.text('Valor', 190, 67.5, { align: 'right' });
     doc.line(20, 70, 195, 70);
 
-    // Conceptos
     doc.setFont('helvetica', 'normal');
     doc.text(`Aguacate Hass - Grueso (${formatoCOP(pVenta)}/Kg)`, 24, 78);
     doc.text(`${kilos} Kg`, 130, 78, { align: 'center' });
@@ -386,7 +399,6 @@ export default function App() {
 
     doc.line(20, 94, 195, 94);
 
-    // Total
     doc.setFillColor(241, 245, 249);
     doc.rect(20, 95, 175, 11, 'F');
     doc.setFont('helvetica', 'bold');
@@ -394,7 +406,6 @@ export default function App() {
     doc.text('TOTAL A PAGAR', 24, 102.5);
     doc.text(formatoCOP(vTotal), 190, 102.5, { align: 'right' });
 
-    // Cuadro Bancario
     doc.setFontSize(9.5);
     doc.setFont('helvetica', 'normal');
     doc.setDrawColor(203, 213, 225);
@@ -402,13 +413,12 @@ export default function App() {
     doc.text('Forma de Pago: Bancolombia Ahorros # 554 879 253 72', 24, 121);
     doc.text('A nombre de: Elkin Bohórquez Tarud (CC 72.271.189)', 24, 126);
 
-    // Firma a la izquierda
     try {
       const img = new Image();
       img.src = '/firma.png';
       doc.addImage(img, 'PNG', 20, 140, 48, 16);
     } catch (e) {
-      console.log('Imagen de firma no cargada');
+      console.log('Firma gráfica omitida');
     }
 
     doc.setDrawColor(15, 23, 42);
@@ -529,7 +539,6 @@ export default function App() {
     }
   }
 
-  // PAGAR FLETE A MACAREO (Con campo explícito de Propina)
   function abrirModalFlete(pedido) {
     setModalPagarFletePedido(pedido);
     const montoCalculado = Number(pedido.cajas || 0) * Number(pedido.costo_flete_caja || 20000);
@@ -1044,6 +1053,26 @@ export default function App() {
     };
   }, [enviosParaMetricas]);
 
+  // Lista de despachos con merma detectada
+  const despachosConMerma = useMemo(() => {
+    return enviosParaMetricas.map(e => {
+      const teorico = Number(e.cajas || 0) * 25;
+      const real = Number(e.kilos || 0);
+      const dif = teorico - real;
+      const porc = teorico > 0 ? (dif / teorico) * 100 : 0;
+      const costoPerdido = dif * Number(e.precio_compra_kg || 6000);
+      return {
+        ...e,
+        teorico,
+        real,
+        dif,
+        porc,
+        costoPerdido
+      };
+    }).filter(e => e.dif > 0.5) // Filtra diferencias relevantes mayores a medio kilo
+      .sort((a, b) => b.dif - a.dif);
+  }, [enviosParaMetricas]);
+
   const abonosDelEnvioModal = useMemo(() => {
     if (!modalHistorialAbonos) return [];
     return abonosCliente.filter(a => a.envio_id === modalHistorialAbonos.id);
@@ -1345,8 +1374,8 @@ export default function App() {
         <button onClick={() => setPestanaActiva('registros')} style={{ flex: 1, padding: '8px', background: pestanaActiva === 'registros' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'registros' ? '#38bdf8' : tema.border}`, borderRadius: '8px', color: pestanaActiva === 'registros' ? '#38bdf8' : tema.textMuted, fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
           Registros ({enviosFiltrados.length + pedidosPendientesConConsecutivo.length})
         </button>
-        <button onClick={() => setPestanaActiva('dashboard')} style={{ flex: 1, padding: '8px', background: pestanaActiva === 'dashboard' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'dashboard' ? '#38bdf8' : tema.border}`, borderRadius: '8px', color: pestanaActiva === 'dashboard' ? '#38bdf8' : tema.textMuted, fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
-          Run Chart & Analítica
+        <button onClick={() => setPestanaActiva('dashboard')} style={{ flex: 1, padding: '8px', background: pestanaActiva === 'dashboard' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'dashboard' ? '#38bdf8' : tema.border}`, borderRadius: '8px', color: pestanaActiva === 'dashboard' ? '#38bdf8' : tema.textMuted, fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+          <BarChart3 size={14} /> Dashboard
         </button>
       </div>
 
@@ -1492,7 +1521,6 @@ export default function App() {
                 const diasCartera = calcularDiasCartera(r.fecha_envio);
                 const semaforo = obtenerColorSemaforo(diasCartera);
 
-                // Cálculo específico de merma de este envío frente a 25 Kg
                 const kilosTeoricos = Number(r.cajas || 0) * 25;
                 const kilosReales = Number(r.kilos || 0);
                 const mermaKilos = kilosTeoricos - kilosReales;
@@ -1514,7 +1542,6 @@ export default function App() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontWeight: '900', fontSize: '17px' }}>#{r.consecutivo}</span>
                           
-                          {/* Insignia de Cartera con Semáforo */}
                           {saldo > 0 ? (
                             <span style={{ padding: '2px 7px', background: semaforo.bg, color: semaforo.color, borderRadius: '4px', fontSize: '10px', fontWeight: '900', border: `1px solid ${semaforo.color}` }}>
                               ⏳ {diasCartera} días • {semaforo.texto}
@@ -1536,7 +1563,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Resumen operativo móvil con flete y merma oscura */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>
                       <div>
                         <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{r.cajas}</b> | <b>{r.kilos} Kg</b><br />
@@ -1556,53 +1582,35 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Botones */}
-                    <div style={{ display: 'grid', gridTemplateColumns: saldo > 0 ? 'auto 1fr 1fr auto auto' : 'auto 1fr 1fr auto', gap: '6px' }}>
+                    {/* Botones Simplificados Sin Redundancias */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '6px' }}>
                       <button
                         onClick={() => abrirModalEditarDespacho(r)}
-                        style={{ padding: '9px 11px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        style={{ padding: '9px 12px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
                         <Edit2 size={14} color="#38bdf8" />
                       </button>
 
                       <button
                         onClick={() => abrirModalCuentaSeguro(r)}
-                        style={{ padding: '9px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                        style={{ padding: '9px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                       >
-                        <FileText size={14} /> Cuenta
+                        <FileText size={15} /> Cuenta de Cobro (PDF)
                       </button>
-
-                      <button
-                        onClick={() => compartirPDFPorWhatsApp(r)}
-                        style={{ padding: '9px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
-                      >
-                        <Share2 size={14} /> PDF
-                      </button>
-
-                      {/* Botón Recordatorio de Cartera si está vencido */}
-                      {saldo > 0 && (
-                        <button
-                          onClick={() => enviarRecordatorioCartera(r)}
-                          title="Recordar pago por WhatsApp"
-                          style={{ padding: '9px 10px', background: semaforo.bg, border: `1px solid ${semaforo.color}`, color: semaforo.color, borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        >
-                          <Send size={13} />
-                        </button>
-                      )}
 
                       {saldo > 0 ? (
                         <button
                           onClick={() => abrirModalAbono(r)}
-                          style={{ padding: '9px 11px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ padding: '9px 14px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                           <DollarSign size={14} /> Abono
                         </button>
                       ) : (
                         <button
                           onClick={() => abrirModalHistorial(r)}
-                          style={{ padding: '9px 11px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ padding: '9px 14px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
-                          <CheckCircle2 size={14} />
+                          <CheckCircle2 size={15} />
                         </button>
                       )}
                     </div>
@@ -1702,7 +1710,6 @@ export default function App() {
                   const diasCartera = calcularDiasCartera(r.fecha_envio);
                   const semaforo = obtenerColorSemaforo(diasCartera);
 
-                  // Merma del envío
                   const kilosTeoricos = Number(r.cajas || 0) * 25;
                   const kilosReales = Number(r.kilos || 0);
                   const mermaKilos = kilosTeoricos - kilosReales;
@@ -1748,17 +1755,9 @@ export default function App() {
                           <button onClick={() => abrirModalEditarDespacho(r)} style={{ padding: '6px 8px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '6px', cursor: 'pointer' }}>
                             <Edit2 size={12} color="#38bdf8" />
                           </button>
-                          <button onClick={() => abrirModalCuentaSeguro(r)} style={{ padding: '6px 10px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
-                            <FileText size={13} /> Cuenta
+                          <button onClick={() => abrirModalCuentaSeguro(r)} style={{ padding: '6px 12px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <FileText size={13} /> Cuenta (PDF)
                           </button>
-                          <button onClick={() => compartirPDFPorWhatsApp(r)} style={{ padding: '6px 10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Share2 size={13} /> PDF
-                          </button>
-                          {saldo > 0 && (
-                            <button onClick={() => enviarRecordatorioCartera(r)} title="Cobro por WhatsApp" style={{ padding: '6px 8px', background: semaforo.bg, border: `1px solid ${semaforo.color}`, color: semaforo.color, borderRadius: '6px', cursor: 'pointer' }}>
-                              <Send size={12} />
-                            </button>
-                          )}
                           {saldo > 0 ? (
                             <button onClick={() => abrirModalAbono(r)} style={{ padding: '6px 10px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
                               <DollarSign size={13} /> Abono
@@ -1779,9 +1778,106 @@ export default function App() {
         )
       )}
 
-      {/* VISTA 2: RUN CHART */}
+      {/* ==================== VISTA 2: DASHBOARD FINANCIERO Y OPERATIVO ==================== */}
       {pestanaActiva === 'dashboard' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
+          {/* SECCIÓN 1: REPORTE DE CARTERA ACTIVA CON BOTÓN DE COBRO CONSOLIDADO */}
+          <div style={{ background: tema.cardBg, padding: '20px', borderRadius: '16px', border: `1px solid ${tema.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#f97316', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <AlertTriangle size={17} /> Control de Cartera Activa (Innovative)
+                </h3>
+                <p style={{ margin: '3px 0 0', color: tema.textMuted, fontSize: '12px' }}>
+                  Total por cobrar: <b>{formatoCOP(totalPorCobrar)}</b> distribuidos en <b>{despachosPendientesCliente.length} despachos</b>
+                </p>
+              </div>
+
+              {despachosPendientesCliente.length > 0 && (
+                <button
+                  onClick={cobrarCarteraCompletaWhatsApp}
+                  style={{ padding: '10px 16px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(37, 211, 102, 0.25)' }}
+                >
+                  <Send size={15} /> Cobrar Todo por WhatsApp
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr' : 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
+              {despachosPendientesCliente.map(e => {
+                const dias = calcularDiasCartera(e.fecha_envio);
+                const sem = obtenerColorSemaforo(dias);
+                return (
+                  <div key={e.id} style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '12px 14px', borderRadius: '10px', border: `1px solid ${sem.color}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 'bold', fontSize: '14px' }}>Despacho #{e.consecutivo}</div>
+                      <div style={{ fontSize: '11px', color: tema.textMuted }}>{e.fecha_envio} ({e.kilos} Kg • {e.cajas} cjs)</div>
+                      <span style={{ display: 'inline-block', marginTop: '4px', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold', background: sem.bg, color: sem.color }}>
+                        ⏳ {dias} días transcurridos
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: '900', fontSize: '15px', color: sem.color }}>{formatoCOP(e.saldo_pendiente)}</div>
+                      <button
+                        onClick={() => abrirModalAbono(e)}
+                        style={{ marginTop: '4px', padding: '4px 8px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
+                      >
+                        Abonar
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* SECCIÓN 2: AUDITORÍA DE MERMA POR DESPACHO */}
+          <div style={{ background: tema.cardBg, padding: '20px', borderRadius: '16px', border: `1px solid ${tema.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#eab308', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Scale size={17} /> Auditoría de Merma por Despacho (vs 25 Kg Teóricos)
+                </h3>
+                <p style={{ margin: '3px 0 0', color: tema.textMuted, fontSize: '12px' }}>
+                  Kilos que se pierden entre la salida de Edison y la báscula de Innovative
+                </p>
+              </div>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: tema.thBg, borderBottom: `1px solid ${tema.border}`, color: tema.textMuted }}>
+                    <th style={{ padding: '8px 10px' }}>Despacho</th>
+                    <th style={{ padding: '8px 10px' }}>Fecha</th>
+                    <th style={{ padding: '8px 10px' }}>Cajas</th>
+                    <th style={{ padding: '8px 10px' }}>Teórico (25Kg/cja)</th>
+                    <th style={{ padding: '8px 10px' }}>Báscula Real</th>
+                    <th style={{ padding: '8px 10px' }}>Kilos Faltantes</th>
+                    <th style={{ padding: '8px 10px' }}>% Merma</th>
+                    <th style={{ padding: '8px 10px' }}>Dinero Perdido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {despachosConMerma.slice(0, 8).map(m => (
+                    <tr key={m.id} style={{ borderBottom: `1px solid ${tema.rowBorder}` }}>
+                      <td style={{ padding: '8px 10px', fontWeight: 'bold' }}>#{m.consecutivo}</td>
+                      <td style={{ padding: '8px 10px', color: tema.textMuted }}>{m.fecha_envio}</td>
+                      <td style={{ padding: '8px 10px' }}>{m.cajas} cjs</td>
+                      <td style={{ padding: '8px 10px' }}>{m.teorico} Kg</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 'bold' }}>{m.real} Kg</td>
+                      <td style={{ padding: '8px 10px', color: '#ef4444', fontWeight: 'bold' }}>-{m.dif.toFixed(1)} Kg</td>
+                      <td style={{ padding: '8px 10px', color: '#ef4444' }}>{m.porc.toFixed(1)}%</td>
+                      <td style={{ padding: '8px 10px', color: '#ef4444', fontWeight: 'bold' }}>-{formatoCOP(m.costoPerdido)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* SECCIÓN 3: 6 TARJETAS ANALÍTICAS CLAVE */}
           <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '10px' }}>
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>MARGEN PROMEDIO / KG</span>
@@ -1820,6 +1916,7 @@ export default function App() {
             </div>
           </div>
 
+          {/* SECCIÓN 4: RUN CHART HISTÓRICO */}
           <div style={{ background: tema.cardBg, padding: '20px', borderRadius: '16px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
               <div>
@@ -1856,7 +1953,9 @@ export default function App() {
               <div onClick={() => setSeriesVisibles(s => ({ ...s, costoFruta: !s.costoFruta }))} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#ef4444', cursor: 'pointer', opacity: seriesVisibles.costoFruta ? 1 : 0.4 }}>
                 <span style={{ width: '12px', height: '3px', background: '#ef4444', borderRadius: '2px', borderBottom: '1px dashed #ef4444' }}></span> 🔴 Costo Fruta Edison
               </div>
-              <div onClick={() => setSeriesVisibles(s => ({ ...s, margen: !s.margen }))} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#22c55e', cursor: 'pointer', opacity: seriesVisibles.margen ? 1 : 0.4 }}><span style={{ width: '12px', height: '3px', background: '#22c55e', borderRadius: '2px' }}></span> 🟢 Margen Bruto Real</div>
+              <div onClick={() => setSeriesVisibles(s => ({ ...s, margen: !s.margen }))} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#22c55e', cursor: 'pointer', opacity: seriesVisibles.margen ? 1 : 0.4 }}>
+                <span style={{ width: '12px', height: '3px', background: '#22c55e', borderRadius: '2px' }}></span> 🟢 Margen Bruto Real
+              </div>
             </div>
 
             {datosGrafico.length === 0 ? (
@@ -2075,7 +2174,6 @@ export default function App() {
                 <input type="number" step="any" required placeholder="Ej: 148.50" autoFocus value={formLiquidar.kilos} onChange={(e) => setFormLiquidar({...formLiquidar, kilos: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: '1px solid #22c55e', color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
               </div>
 
-              {/* Comparador de merma instantáneo al escribir los kilos */}
               {formLiquidar.kilos && Number(formLiquidar.kilos) > 0 && (
                 <div style={{ background: (Number(modalLiquidarPedido.cajas) * 25 - Number(formLiquidar.kilos)) > 0 ? 'rgba(239, 68, 68, 0.12)' : 'rgba(34, 197, 94, 0.12)', padding: '10px', borderRadius: '8px', border: `1px solid ${(Number(modalLiquidarPedido.cajas) * 25 - Number(formLiquidar.kilos)) > 0 ? '#ef4444' : '#22c55e'}`, fontSize: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
