@@ -12,6 +12,15 @@ export default function App() {
   const [pinInput, setPinInput] = useState('');
   const [errorBiometria, setErrorBiometria] = useState('');
 
+  // Detección directa de pantalla móvil
+  const [esMovil, setEsMovil] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setEsMovil(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [envios, setEnvios] = useState([]);
   const [pedidos, setPedidos] = useState([]);
   const [proveedores, setProveedores] = useState([]);
@@ -79,7 +88,7 @@ export default function App() {
   const [notasPagoProv, setNotasPagoProv] = useState('');
 
   const [darkMode, setDarkMode] = useState(true);
-  const [pestanaActiva, setPestanaActiva] = useState('registros'); // 'registros' o 'dashboard'
+  const [pestanaActiva, setPestanaActiva] = useState('registros');
 
   // Filtros
   const [filtroTexto, setFiltroTexto] = useState('');
@@ -103,17 +112,6 @@ export default function App() {
   const PRECIOS_COMPRA = [6000, 6500, 7000, 7500, 8000, 8500, 9000];
   const PRECIOS_VENTA = [9500, 10000, 10200, 10500, 11000, 11200, 11500, 12000, 15750];
   const TARIFAS_FLETE = [32000, 30000, 35000];
-
-  const [formData, setFormData] = useState({
-    consecutivo: '000593',
-    fecha_envio: new Date().toISOString().split('T')[0],
-    cajas: '',
-    kilos: '',
-    precio_compra_kg: 6000,
-    precio_venta_kg: 11200,
-    costo_flete_caja: 32000,
-    notas: ''
-  });
 
   useEffect(() => {
     const sesionValida = sessionStorage.getItem('aguacates_auth');
@@ -172,10 +170,6 @@ export default function App() {
 
     if (dataEnvios) {
       setEnvios(dataEnvios);
-      setFormData(prev => ({
-        ...prev,
-        consecutivo: calcularSiguienteConsecutivo(dataEnvios)
-      }));
     }
 
     const { data: dataPedidos } = await supabase
@@ -365,21 +359,6 @@ export default function App() {
     await cargarDatos();
   }
 
-  function abrirModalNuevo() {
-    setFormData(prev => ({
-      ...prev,
-      consecutivo: calcularSiguienteConsecutivo(envios),
-      fecha_envio: new Date().toISOString().split('T')[0],
-      cajas: '',
-      kilos: '',
-      precio_compra_kg: 6000,
-      precio_venta_kg: 11200,
-      costo_flete_caja: 32000,
-      notas: ''
-    }));
-    setModalAbierto(true);
-  }
-
   function abrirModalEditarDespacho(envio) {
     setFormEdicion({
       id: envio.id,
@@ -421,19 +400,6 @@ export default function App() {
 
   function abrirModalHistorial(envio) {
     setModalHistorialAbonos(envio);
-  }
-
-  async function eliminarAbono(abonoId) {
-    if (!window.confirm('¿Seguro que deseas anular este abono? El saldo volverá a quedar pendiente.')) return;
-
-    const { error } = await supabase.from('abonos_cliente').delete().eq('id', abonoId);
-
-    if (!error) {
-      await cargarDatos();
-      setModalHistorialAbonos(null);
-    } else {
-      alert('Error anulando abono: ' + error.message);
-    }
   }
 
   function abrirModalPagoProveedor() {
@@ -741,27 +707,12 @@ export default function App() {
     return enviosFiltrados;
   }, [seleccionadosTabla, envios, enviosFiltrados]);
 
-  const haySeleccionActiva = seleccionadosTabla.length > 0;
   const enviosConDeudaCliente = enviosParaMetricas.filter(e => Number(e.saldo_pendiente || 0) > 0).length;
   const totalPorCobrar = enviosParaMetricas.reduce((acc, r) => acc + Number(r.saldo_pendiente || 0), 0);
   const margenTotal = enviosParaMetricas.reduce((acc, r) => acc + Number(r.margen_bruto || 0), 0);
   const totalKilos = enviosParaMetricas.reduce((acc, r) => acc + Number(r.kilos || 0), 0);
   const totalCajas = enviosParaMetricas.reduce((acc, r) => acc + Number(r.cajas || 0), 0);
   const promedioMargenDespacho = enviosParaMetricas.length > 0 ? (margenTotal / enviosParaMetricas.length) : 0;
-
-  const metricaMerma = useMemo(() => {
-    const kilosTeoricosEdison = enviosParaMetricas.reduce((acc, e) => acc + (Number(e.cajas || 0) * 25), 0);
-    const kilosRealesBascula = enviosParaMetricas.reduce((acc, e) => acc + Number(e.kilos || 0), 0);
-    const kilosDiferencia = kilosTeoricosEdison - kilosRealesBascula;
-    const porcentajeMerma = kilosTeoricosEdison > 0 ? ((kilosDiferencia / kilosTeoricosEdison) * 100) : 0;
-
-    return {
-      kilosTeoricosEdison,
-      kilosRealesBascula,
-      kilosDiferencia,
-      porcentajeMerma
-    };
-  }, [enviosParaMetricas]);
 
   const abonosDelEnvioModal = useMemo(() => {
     if (!modalHistorialAbonos) return [];
@@ -877,11 +828,11 @@ export default function App() {
   const montoRecibidoNum = Number(montoRealRecibido || totalSeleccionadoAbonoMultiple);
   const diferenciaDescuento = Math.max(0, totalSeleccionadoAbonoMultiple - montoRecibidoNum);
 
-  // PANTALLA DE BLOQUEO BIOMÉTRICO
+  // Pantalla de bloqueo
   if (!autenticado) {
     return (
       <div style={{ minHeight: '100vh', background: '#090d16', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-        <div style={{ background: '#131b2e', border: '1px solid #1e293b', borderRadius: '24px', padding: '32px 20px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)' }}>
+        <div style={{ background: '#131b2e', border: '1px solid #1e293b', borderRadius: '24px', padding: '32px 20px', maxWidth: '360px', width: '100%', textAlign: 'center' }}>
           <div style={{ fontSize: '44px', marginBottom: '8px' }}>🥑</div>
           <h2 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 4px' }}>Aguacates & Tesorería</h2>
           <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 20px' }}>Acceso seguro biométrico</p>
@@ -925,27 +876,9 @@ export default function App() {
   }
 
   return (
-    <div style={{ padding: '12px', fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '1280px', margin: '0 auto', background: tema.bg, color: tema.textMain, minHeight: '100vh', boxSizing: 'border-box' }}>
+    <div style={{ padding: '12px', fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '1280px', margin: '0 auto', background: tema.bg, color: tema.textMain, minHeight: '100vh', boxSizing: 'border-box', overflowX: 'hidden' }}>
       
-      {/* CSS RESPONSIVE INYECTADO (TARJETAS EN MÓVIL / TABLA EN PC) */}
-      <style>{`
-        .vista-pc { display: block; }
-        .vista-movil { display: none; }
-        .grid-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
-        .botones-header { display: flex; gap: 8px; flex-wrap: wrap; }
-
-        @media (max-width: 768px) {
-          .vista-pc { display: none !important; }
-          .vista-movil { display: flex !important; flex-direction: column; gap: 10px; }
-          .grid-kpis { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-          .kpi-card { padding: 12px !important; border-radius: 12px !important; }
-          .kpi-val { fontSize: 17px !important; }
-          .botones-header { width: 100% !important; display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-          .btn-header-full { grid-column: span 2 !important; }
-        }
-      `}</style>
-
-      {/* HEADER ADAPTATIVO */}
+      {/* HEADER */}
       <div style={{ marginBottom: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -970,87 +903,85 @@ export default function App() {
         </div>
 
         {/* BOTONERA ACCIONES */}
-        <div className="botones-header">
+        <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr 1fr' : 'repeat(3, auto)', gap: '8px' }}>
           <button 
             onClick={abrirModalCrearPedido}
             style={{ padding: '11px', background: '#eab308', color: '#090d16', border: 'none', borderRadius: '10px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
           >
-            <Clock size={16} /> + Pedido (Cajas)
+            <Clock size={16} /> + Pedido
           </button>
 
           <button 
             onClick={abrirModalAbonoMultiple} 
             style={{ padding: '11px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
           >
-            <CheckSquare size={16} /> + Abono Cliente
+            <CheckSquare size={16} /> + Abono
           </button>
 
           <button 
             onClick={abrirModalPagoProveedor} 
-            className="btn-header-full"
-            style={{ padding: '11px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+            style={{ gridColumn: esMovil ? 'span 2' : 'auto', padding: '11px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
           >
-            <ArrowUpRight size={16} /> Pagar Proveedor (Edison / Macareo)
+            <ArrowUpRight size={16} /> Pagar Proveedor
           </button>
         </div>
       </div>
 
-      {/* TARJETAS KPI (GRID RESPONSIVE) */}
-      <div className="grid-kpis" style={{ marginBottom: '16px' }}>
+      {/* TARJETAS KPI (2 COLUMNAS EN CELULAR) */}
+      <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr 1fr' : 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px', marginBottom: '14px' }}>
         <div 
-          className="kpi-card"
           onClick={() => setFiltroEstado(filtroEstado === 'pendientes' ? 'todos' : 'pendientes')}
-          style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${filtroEstado === 'pendientes' ? '#f97316' : tema.border}`, cursor: 'pointer' }}
+          style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${filtroEstado === 'pendientes' ? '#f97316' : tema.border}`, cursor: 'pointer' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>POR COBRAR</span>
-            <AlertCircle size={14} color="#f97316" />
+            <AlertCircle size={13} color="#f97316" />
           </div>
-          <div className="kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: '#f97316', marginTop: '4px' }}>{formatoCOP(totalPorCobrar)}</div>
+          <div style={{ fontSize: '18px', fontWeight: '800', color: '#f97316', marginTop: '4px' }}>{formatoCOP(totalPorCobrar)}</div>
           <div style={{ fontSize: '10px', color: tema.textMuted, marginTop: '2px' }}>
             {enviosConDeudaCliente > 0 ? `⚠️ ${enviosConDeudaCliente} pend.` : '✅ Al día'}
           </div>
         </div>
 
-        <div className="kpi-card" style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
+        <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>DEBO A EDISON</span>
-            <ArrowUpRight size={14} color="#ef4444" />
+            <ArrowUpRight size={13} color="#ef4444" />
           </div>
-          <div className="kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: '#ef4444', marginTop: '4px' }}>{formatoCOP(deudaEdison)}</div>
+          <div style={{ fontSize: '18px', fontWeight: '800', color: '#ef4444', marginTop: '4px' }}>{formatoCOP(deudaEdison)}</div>
           <div style={{ fontSize: '10px', color: tema.textMuted, marginTop: '2px' }}>
             {deudaEdison > 0 ? `${despachosPendientesParaProveedor.length} por liquidar` : '✅ Fruta paga'}
           </div>
         </div>
 
-        <div className="kpi-card" style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
+        <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>MARGEN BRUTO</span>
-            <TrendingUp size={14} color="#22c55e" />
+            <TrendingUp size={13} color="#22c55e" />
           </div>
-          <div className="kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: '#22c55e', marginTop: '4px' }}>{formatoCOP(margenTotal)}</div>
+          <div style={{ fontSize: '18px', fontWeight: '800', color: '#22c55e', marginTop: '4px' }}>{formatoCOP(margenTotal)}</div>
           <div style={{ fontSize: '10px', color: tema.textMuted, marginTop: '2px' }}>
             Prom: {formatoCOP(promedioMargenDespacho)}/env
           </div>
         </div>
 
-        <div className="kpi-card" style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: '1px solid rgba(234, 179, 8, 0.4)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#eab308', fontSize: '10px', fontWeight: '800' }}>
-            <span>MERMA / BÁSCULA</span>
-            <Scale size={14} color="#eab308" />
+        <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
+            <span>FRUTA DESPACHADA</span>
+            <Package size={13} color="#38bdf8" />
           </div>
-          <div className="kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: metricaMerma.kilosDiferencia > 0 ? '#f97316' : '#22c55e', marginTop: '4px' }}>
-            {metricaMerma.kilosDiferencia > 0 ? `-${metricaMerma.kilosDiferencia.toFixed(1)} Kg` : `+${Math.abs(metricaMerma.kilosDiferencia).toFixed(1)} Kg`}
+          <div style={{ fontSize: '18px', fontWeight: '800', color: tema.textMain, marginTop: '4px' }}>
+            {Number(totalKilos).toFixed(1)} Kg
           </div>
           <div style={{ fontSize: '10px', color: tema.textMuted, marginTop: '2px' }}>
-            {metricaMerma.kilosDiferencia > 0 ? `${metricaMerma.porcentajeMerma.toFixed(1)}% vs 25Kg teór.` : '✅ Cubierto por Edison'}
+            En {totalCajas} cajas
           </div>
         </div>
       </div>
 
-      {/* BARRA DE FILTROS COMPACTA */}
-      <div style={{ background: tema.cardBg, padding: '10px', borderRadius: '12px', border: `1px solid ${tema.border}`, marginBottom: '14px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: '1', minWidth: '130px' }}>
+      {/* FILTROS */}
+      <div style={{ background: tema.cardBg, padding: '8px 10px', borderRadius: '10px', border: `1px solid ${tema.border}`, marginBottom: '12px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: '1' }}>
           <Search size={13} style={{ position: 'absolute', left: '8px', top: '9px', color: tema.textMuted }} />
           <input 
             type="text" 
@@ -1061,42 +992,27 @@ export default function App() {
           />
         </div>
 
-        <div style={{ display: 'flex', gap: '4px' }}>
-          <button onClick={() => setFiltroEstado('todos')} style={{ padding: '6px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', background: filtroEstado === 'todos' ? '#38bdf8' : tema.inputBg, color: filtroEstado === 'todos' ? '#090d16' : tema.textMuted, border: `1px solid ${tema.border}` }}>Todos</button>
-          <button onClick={() => setFiltroEstado('pendientes')} style={{ padding: '6px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', background: filtroEstado === 'pendientes' ? '#f97316' : tema.inputBg, color: filtroEstado === 'pendientes' ? '#090d16' : tema.textMuted, border: `1px solid ${tema.border}` }}>Pendientes</button>
-          <button onClick={() => setFiltroEstado('saldados')} style={{ padding: '6px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', background: filtroEstado === 'saldados' ? '#22c55e' : tema.inputBg, color: filtroEstado === 'saldados' ? '#090d16' : tema.textMuted, border: `1px solid ${tema.border}` }}>Saldados</button>
+        <div style={{ display: 'flex', gap: '3px' }}>
+          <button onClick={() => setFiltroEstado('todos')} style={{ padding: '6px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', background: filtroEstado === 'todos' ? '#38bdf8' : tema.inputBg, color: filtroEstado === 'todos' ? '#090d16' : tema.textMuted, border: 'none', cursor: 'pointer' }}>Todos</button>
+          <button onClick={() => setFiltroEstado('pendientes')} style={{ padding: '6px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', background: filtroEstado === 'pendientes' ? '#f97316' : tema.inputBg, color: filtroEstado === 'pendientes' ? '#090d16' : tema.textMuted, border: 'none', cursor: 'pointer' }}>Pend.</button>
         </div>
-
-        {mesesDisponibles.length > 0 && (
-          <select 
-            value={filtroMes} 
-            onChange={(e) => setFiltroMes(e.target.value)} 
-            style={{ padding: '6px 8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-          >
-            <option value="todos">Meses</option>
-            {mesesDisponibles.map(m => (
-              <option key={m} value={m}>{formatoMesEspanol(m)}</option>
-            ))}
-          </select>
-        )}
       </div>
 
       {/* PESTAÑAS */}
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', borderBottom: `1px solid ${tema.border}`, paddingBottom: '6px' }}>
-        <button onClick={() => setPestanaActiva('registros')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: pestanaActiva === 'registros' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'registros' ? tema.border : 'transparent'}`, borderRadius: '6px', color: pestanaActiva === 'registros' ? '#38bdf8' : tema.textMuted, fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}>
-          <ListFilter size={14} /> Registros ({enviosFiltrados.length})
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+        <button onClick={() => setPestanaActiva('registros')} style={{ flex: 1, padding: '8px', background: pestanaActiva === 'registros' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'registros' ? '#38bdf8' : tema.border}`, borderRadius: '8px', color: pestanaActiva === 'registros' ? '#38bdf8' : tema.textMuted, fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
+          Registros ({enviosFiltrados.length})
         </button>
-
-        <button onClick={() => setPestanaActiva('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: pestanaActiva === 'dashboard' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'dashboard' ? tema.border : 'transparent'}`, borderRadius: '6px', color: pestanaActiva === 'dashboard' ? '#38bdf8' : tema.textMuted, fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}>
-          <BarChart3 size={14} /> Gráfico
+        <button onClick={() => setPestanaActiva('dashboard')} style={{ flex: 1, padding: '8px', background: pestanaActiva === 'dashboard' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'dashboard' ? '#38bdf8' : tema.border}`, borderRadius: '8px', color: pestanaActiva === 'dashboard' ? '#38bdf8' : tema.textMuted, fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
+          Gráfica
         </button>
       </div>
 
       {/* VISTA 1: REGISTROS */}
       {pestanaActiva === 'registros' && (
-        <>
-          {/* ==================== A) VISTA MÓVIL (TARJETAS NATIVAS) ==================== */}
-          <div className="vista-movil">
+        esMovil ? (
+          /* ==================== A) VISTA MÓVIL (TARJETAS INDEPENDIENTES) ==================== */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {/* PEDIDOS PENDIENTES */}
             {pedidosPendientesConConsecutivo.map((p) => (
               <div 
@@ -1112,10 +1028,10 @@ export default function App() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontWeight: '900', fontSize: '16px', color: '#eab308' }}>#{p.consecutivo}</span>
+                      <span style={{ fontWeight: '900', fontSize: '17px', color: '#eab308' }}>#{p.consecutivo}</span>
                       <span style={{ padding: '2px 6px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', borderRadius: '4px', fontSize: '10px', fontWeight: '800' }}>PEDIDO</span>
                     </div>
-                    <div style={{ fontSize: '11px', color: tema.textMuted, marginTop: '2px' }}>Fecha: {p.fecha_pedido}</div>
+                    <div style={{ fontSize: '12px', color: tema.textMuted, marginTop: '2px' }}>Fecha: {p.fecha_pedido}</div>
                   </div>
 
                   <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308' }}>
@@ -1123,7 +1039,7 @@ export default function App() {
                   </span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>
                   <div>
                     <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{p.cajas} cajas</b>
                   </div>
@@ -1135,13 +1051,13 @@ export default function App() {
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
                     onClick={() => iniciarLiquidacionPedido(p)}
-                    style={{ flex: 1, padding: '10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    style={{ flex: 1, padding: '11px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                   >
                     <CheckCheck size={16} /> Recibir báscula
                   </button>
                   <button
                     onClick={() => cancelarPedido(p.id)}
-                    style={{ padding: '10px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: '#ef4444', borderRadius: '8px', cursor: 'pointer' }}
+                    style={{ padding: '11px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: '#ef4444', borderRadius: '8px', cursor: 'pointer' }}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -1171,19 +1087,19 @@ export default function App() {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                       <div>
-                        <div style={{ fontWeight: '900', fontSize: '16px' }}>#{r.consecutivo}</div>
-                        <div style={{ fontSize: '11px', color: tema.textMuted, marginTop: '2px' }}>{r.fecha_envio}</div>
+                        <div style={{ fontWeight: '900', fontSize: '17px' }}>#{r.consecutivo}</div>
+                        <div style={{ fontSize: '12px', color: tema.textMuted, marginTop: '2px' }}>{r.fecha_envio}</div>
                       </div>
 
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: '800', fontSize: '15px', color: saldo > 0 ? '#f97316' : '#22c55e' }}>
+                        <div style={{ fontWeight: '800', fontSize: '16px', color: saldo > 0 ? '#f97316' : '#22c55e' }}>
                           {saldo > 0 ? formatoCOP(saldo) : '✅ Pagado'}
                         </div>
                         <div style={{ fontSize: '10px', color: tema.textMuted }}>{saldo > 0 ? 'Saldo pendiente' : 'Saldado'}</div>
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '8px 10px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>
                       <div>
                         <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{r.cajas}</b> | <span style={{ color: tema.textMuted }}>Kilos:</span> <b>{r.kilos} Kg</b>
                       </div>
@@ -1192,25 +1108,25 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Botonera de acciones grandes para celular */}
+                    {/* Botones al ancho del pulgar */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr auto', gap: '6px' }}>
                       <button
                         onClick={() => abrirModalEditarDespacho(r)}
-                        style={{ padding: '8px 10px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        style={{ padding: '9px 12px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
                         <Edit2 size={14} color="#38bdf8" />
                       </button>
 
                       <button
                         onClick={() => setModalCuentaCobro(r)}
-                        style={{ padding: '8px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                        style={{ padding: '9px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       >
                         <FileText size={14} /> Cuenta
                       </button>
 
                       <button
                         onClick={() => enviarWhatsApp(r)}
-                        style={{ padding: '8px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                        style={{ padding: '9px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       >
                         <Send size={14} /> WhatsApp
                       </button>
@@ -1218,14 +1134,14 @@ export default function App() {
                       {saldo > 0 ? (
                         <button
                           onClick={() => abrirModalAbono(r)}
-                          style={{ padding: '8px 12px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ padding: '9px 12px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                           <DollarSign size={14} /> Abono
                         </button>
                       ) : (
                         <button
                           onClick={() => abrirModalHistorial(r)}
-                          style={{ padding: '8px 10px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ padding: '9px 12px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                           <CheckCircle2 size={14} />
                         </button>
@@ -1236,9 +1152,9 @@ export default function App() {
               })
             )}
           </div>
-
-          {/* ==================== B) VISTA PC (TABLA TRADICIONAL) ==================== */}
-          <div className="vista-pc" style={{ background: tema.cardBg, borderRadius: '14px', border: `1px solid ${tema.border}`, overflowX: 'auto' }}>
+        ) : (
+          /* ==================== B) VISTA PC (TABLA COMPLETA) ==================== */
+          <div style={{ background: tema.cardBg, borderRadius: '14px', border: `1px solid ${tema.border}`, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
                 <tr style={{ background: tema.thBg, borderBottom: `1px solid ${tema.border}`, color: tema.textMuted }}>
@@ -1259,7 +1175,6 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {/* Pedidos */}
                 {pedidosPendientesConConsecutivo.map((p) => (
                   <tr key={p.id} style={{ borderBottom: `1px solid ${tema.rowBorder}`, background: 'rgba(234, 179, 8, 0.08)', borderLeft: '3px solid #eab308' }}>
                     <td style={{ padding: '12px 14px', textAlign: 'center' }}><Clock size={16} color="#eab308" /></td>
@@ -1284,7 +1199,6 @@ export default function App() {
                   </tr>
                 ))}
 
-                {/* Despachos */}
                 {enviosFiltrados.map((r) => {
                   const saldo = Number(r.saldo_pendiente || 0);
                   const estaSeleccionado = seleccionadosTabla.includes(r.id);
@@ -1336,14 +1250,14 @@ export default function App() {
               </tbody>
             </table>
           </div>
-        </>
+        )
       )}
 
-      {/* VISTA 2: GRÁFICO RUN CHART */}
+      {/* VISTA 2: GRÁFICO */}
       {pestanaActiva === 'dashboard' && (
         <div style={{ background: tema.cardBg, padding: '16px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700' }}>Run Chart de Rendimiento</h3>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700' }}>Run Chart</h3>
             <div style={{ display: 'flex', gap: '4px', background: tema.inputBg, padding: '2px', borderRadius: '6px' }}>
               {['envio', 'semana', 'mes', 'ano'].map(modo => (
                 <button
