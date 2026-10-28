@@ -5,7 +5,7 @@ import {
   Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
   BarChart3, ListFilter, Search, DollarSign, CheckCircle2, 
   ArrowUpRight, Truck, Check, Edit2, FileText, Download, Send, CheckSquare, Square,
-  ArrowUpDown, ArrowUp, ArrowDown, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins, Share2
+  ArrowUpDown, ArrowUp, ArrowDown, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins, Share2, AlertTriangle
 } from 'lucide-react';
 
 export default function App() {
@@ -55,9 +55,10 @@ export default function App() {
   const [montoRealRecibido, setMontoRealRecibido] = useState('');
   const [esDescuentoDefinitivo, setEsDescuentoDefinitivo] = useState(true);
 
-  // Formulario Flete Pedido
+  // Formulario Flete Pedido (Macareo + propina)
   const [formFletePedido, setFormFletePedido] = useState({
     monto: '',
+    propina: '0',
     fecha: new Date().toISOString().split('T')[0]
   });
 
@@ -146,7 +147,6 @@ export default function App() {
     }
   }, []);
 
-  // ACCESO BIOMÉTRICO SIN MENÚS EXTERNOS DE PASSKEY
   async function activarHuellaBiometrica() {
     setErrorBiometria('');
     try {
@@ -159,7 +159,7 @@ export default function App() {
           return;
         }
       }
-      throw new Error('Sin biometría disponible');
+      throw new Error('Sin biometría');
     } catch (err) {
       setErrorBiometria('Ingresa tu PIN de 4 dígitos.');
     }
@@ -284,6 +284,26 @@ export default function App() {
     document.body.removeChild(link);
   }
 
+  // CÁLCULO DE DÍAS TRANSCURRIDOS Y SEMÁFORO
+  function calcularDiasCartera(fechaEnvio) {
+    if (!fechaEnvio) return 0;
+    const diffTime = Math.abs(new Date() - new Date(fechaEnvio));
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  }
+
+  function obtenerColorSemaforo(dias) {
+    if (dias <= 7) return { color: '#22c55e', bg: 'rgba(34, 197, 94, 0.15)', texto: 'Al día' };
+    if (dias <= 15) return { color: '#eab308', bg: 'rgba(234, 179, 8, 0.18)', texto: 'Por vencer' };
+    return { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.18)', texto: 'Vencido' };
+  }
+
+  // MENSAJE DE COBRO RECORDATORIO DIRECTO POR WHATSAPP
+  function enviarRecordatorioCartera(envio) {
+    const dias = calcularDiasCartera(envio.fecha_envio);
+    const mensaje = `Hola, cordial saludo. Me comunico para consultar el estado de programación de pago de la *Cuenta de Cobro #${envio.consecutivo}* con fecha ${envio.fecha_envio} (${dias} días) por saldo pendiente de *${formatoCOP(envio.saldo_pendiente)}*.%0A%0A¿Me confirman si sale en el corte de esta semana? Quedo muy atento, muchas gracias.`;
+    window.open(`https://api.whatsapp.com/send?text=${mensaje}`, '_blank');
+  }
+
   function abrirModalCuentaSeguro(r) {
     const kilos = Number(r.kilos || 0);
     const cajas = Number(r.cajas || 0);
@@ -305,7 +325,7 @@ export default function App() {
     });
   }
 
-  // GENERAR PDF DE EXACTAMENTE 1 PÁGINA MEDIANTE JSPDF (Sin window.print)
+  // GENERAR PDF DE EXACTAMENTE 1 PÁGINA MEDIANTE JSPDF
   function crearPDFDocumento(envio) {
     const doc = new jsPDF({ format: 'letter', unit: 'mm' });
     const kilos = Number(envio.kilos_calc || envio.kilos || 0);
@@ -388,7 +408,7 @@ export default function App() {
       img.src = '/firma.png';
       doc.addImage(img, 'PNG', 20, 140, 48, 16);
     } catch (e) {
-      console.log('Imagen no cargada en canvas');
+      console.log('Imagen de firma no cargada');
     }
 
     doc.setDrawColor(15, 23, 42);
@@ -404,13 +424,11 @@ export default function App() {
     return doc;
   }
 
-  // DESCARGAR PDF LIMPIO DE 1 PÁGINA
   function descargarPDFDirecto(envio) {
     const doc = crearPDFDocumento(envio);
     doc.save(`Cuenta_Cobro_${envio.consecutivo}_Aguacates.pdf`);
   }
 
-  // COMPARTIR EL ARCHIVO PDF REAL EN WHATSAPP DIRECTAMENTE
   async function compartirPDFPorWhatsApp(envio) {
     try {
       const doc = crearPDFDocumento(envio);
@@ -427,7 +445,7 @@ export default function App() {
         return;
       }
     } catch (err) {
-      console.log('Compartir directo cancelado o no disponible:', err);
+      console.log('Compartir directo cancelado:', err);
     }
 
     descargarPDFDirecto(envio);
@@ -511,11 +529,13 @@ export default function App() {
     }
   }
 
+  // PAGAR FLETE A MACAREO (Con campo explícito de Propina)
   function abrirModalFlete(pedido) {
     setModalPagarFletePedido(pedido);
     const montoCalculado = Number(pedido.cajas || 0) * Number(pedido.costo_flete_caja || 20000);
     setFormFletePedido({
       monto: pedido.monto_flete_pagado && Number(pedido.monto_flete_pagado) > 0 ? pedido.monto_flete_pagado : montoCalculado,
+      propina: '0',
       fecha: pedido.fecha_pago_flete || new Date().toISOString().split('T')[0]
     });
   }
@@ -524,11 +544,13 @@ export default function App() {
     e.preventDefault();
     if (!modalPagarFletePedido) return;
 
+    const montoTotalFlete = Number(formFletePedido.monto) + Number(formFletePedido.propina || 0);
+
     const { error } = await supabase
       .from('pedidos')
       .update({
         flete_pagado: true,
-        monto_flete_pagado: Number(formFletePedido.monto),
+        monto_flete_pagado: montoTotalFlete,
         fecha_pago_flete: formFletePedido.fecha,
         estado_fase: 'en_ruta'
       })
@@ -1132,7 +1154,7 @@ export default function App() {
             onClick={activarHuellaBiometrica}
             style={{ width: '100%', padding: '15px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', marginBottom: '16px', boxShadow: '0 4px 14px rgba(22, 163, 74, 0.3)' }}
           >
-            <Fingerprint size={22} /> Tocar Huella / FaceID
+            <Fingerprint size={22} /> Tocar Huella / Desbloqueo
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '16px 0', color: '#64748b', fontSize: '11px' }}>
@@ -1459,7 +1481,7 @@ export default function App() {
               );
             })}
 
-            {/* DESPACHOS FACTURADOS */}
+            {/* DESPACHOS FACTURADOS CON SEMÁFORO Y MERMA ESPECÍFICA */}
             {loading ? (
               <div style={{ textAlign: 'center', padding: '24px', color: tema.textMuted }}>Cargando registros...</div>
             ) : enviosFiltrados.length === 0 && pedidosPendientesConConsecutivo.length === 0 ? (
@@ -1467,6 +1489,14 @@ export default function App() {
             ) : (
               enviosFiltrados.map((r) => {
                 const saldo = Number(r.saldo_pendiente || 0);
+                const diasCartera = calcularDiasCartera(r.fecha_envio);
+                const semaforo = obtenerColorSemaforo(diasCartera);
+
+                // Cálculo específico de merma de este envío frente a 25 Kg
+                const kilosTeoricos = Number(r.cajas || 0) * 25;
+                const kilosReales = Number(r.kilos || 0);
+                const mermaKilos = kilosTeoricos - kilosReales;
+                const mermaPorc = kilosTeoricos > 0 ? ((mermaKilos / kilosTeoricos) * 100) : 0;
 
                 return (
                   <div
@@ -1475,44 +1505,62 @@ export default function App() {
                       background: tema.cardBg,
                       borderRadius: '14px',
                       padding: '14px',
-                      border: `1px solid ${saldo > 0 ? 'rgba(249, 115, 22, 0.4)' : tema.border}`,
-                      borderLeft: `4px solid ${saldo > 0 ? '#f97316' : '#22c55e'}`
+                      border: `1px solid ${saldo > 0 ? semaforo.color : tema.border}`,
+                      borderLeft: `5px solid ${saldo > 0 ? semaforo.color : '#22c55e'}`
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontWeight: '900', fontSize: '17px' }}>#{r.consecutivo}</span>
-                          <span style={{ padding: '2px 6px', background: saldo > 0 ? 'rgba(249, 115, 22, 0.15)' : 'rgba(34, 197, 94, 0.15)', color: saldo > 0 ? '#f97316' : '#22c55e', borderRadius: '4px', fontSize: '10px', fontWeight: '800' }}>
-                            {saldo > 0 ? 'EN CARTERA' : 'SALDADO'}
-                          </span>
+                          
+                          {/* Insignia de Cartera con Semáforo */}
+                          {saldo > 0 ? (
+                            <span style={{ padding: '2px 7px', background: semaforo.bg, color: semaforo.color, borderRadius: '4px', fontSize: '10px', fontWeight: '900', border: `1px solid ${semaforo.color}` }}>
+                              ⏳ {diasCartera} días • {semaforo.texto}
+                            </span>
+                          ) : (
+                            <span style={{ padding: '2px 6px', background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', borderRadius: '4px', fontSize: '10px', fontWeight: '800' }}>
+                              SALDADO
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '12px', color: tema.textMuted, marginTop: '2px' }}>{r.fecha_envio}</div>
                       </div>
 
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: '800', fontSize: '16px', color: saldo > 0 ? '#f97316' : '#22c55e' }}>
+                        <div style={{ fontWeight: '800', fontSize: '16px', color: saldo > 0 ? semaforo.color : '#22c55e' }}>
                           {saldo > 0 ? formatoCOP(saldo) : '✅ Pagado'}
                         </div>
                         <div style={{ fontSize: '10px', color: tema.textMuted }}>{saldo > 0 ? 'Saldo Innovative' : 'Saldado'}</div>
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>
+                    {/* Resumen operativo móvil con flete y merma oscura */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>
                       <div>
                         <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{r.cajas}</b> | <b>{r.kilos} Kg</b><br />
                         <span style={{ color: tema.textMuted }}>Flete Macareo:</span> <b style={{ color: '#22c55e' }}>{formatoCOP(r.total_flete)}</b>
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <span style={{ color: tema.textMuted }}>Margen:</span> <b style={{ color: '#38bdf8' }}>{formatoCOP(r.margen_bruto)}</b><br />
-                        <span style={{ color: tema.textMuted }}>Compra:</span> <b>{formatoCOP(r.precio_compra_kg)}/Kg</b>
+                        {mermaKilos > 0 ? (
+                          <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '11px' }}>
+                            ⚠️ Merma: -{mermaKilos.toFixed(1)} Kg ({mermaPorc.toFixed(1)}%)
+                          </span>
+                        ) : (
+                          <span style={{ color: '#22c55e', fontSize: '11px', fontWeight: 'bold' }}>
+                            ✅ Báscula completa
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr auto', gap: '6px' }}>
+                    {/* Botones */}
+                    <div style={{ display: 'grid', gridTemplateColumns: saldo > 0 ? 'auto 1fr 1fr auto auto' : 'auto 1fr 1fr auto', gap: '6px' }}>
                       <button
                         onClick={() => abrirModalEditarDespacho(r)}
-                        style={{ padding: '9px 12px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        style={{ padding: '9px 11px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
                         <Edit2 size={14} color="#38bdf8" />
                       </button>
@@ -1528,20 +1576,31 @@ export default function App() {
                         onClick={() => compartirPDFPorWhatsApp(r)}
                         style={{ padding: '9px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       >
-                        <Share2 size={14} /> PDF WhatsApp
+                        <Share2 size={14} /> PDF
                       </button>
+
+                      {/* Botón Recordatorio de Cartera si está vencido */}
+                      {saldo > 0 && (
+                        <button
+                          onClick={() => enviarRecordatorioCartera(r)}
+                          title="Recordar pago por WhatsApp"
+                          style={{ padding: '9px 10px', background: semaforo.bg, border: `1px solid ${semaforo.color}`, color: semaforo.color, borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <Send size={13} />
+                        </button>
+                      )}
 
                       {saldo > 0 ? (
                         <button
                           onClick={() => abrirModalAbono(r)}
-                          style={{ padding: '9px 12px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ padding: '9px 11px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                           <DollarSign size={14} /> Abono
                         </button>
                       ) : (
                         <button
                           onClick={() => abrirModalHistorial(r)}
-                          style={{ padding: '9px 12px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ padding: '9px 11px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                           <CheckCircle2 size={14} />
                         </button>
@@ -1563,10 +1622,10 @@ export default function App() {
                       {seleccionadosTabla.length > 0 && seleccionadosTabla.length === enviosFiltrados.length ? <CheckSquare size={16} color="#38bdf8" /> : <Square size={16} color={tema.textMuted} />}
                     </div>
                   </th>
-                  <th onClick={() => handleOrdenar('consecutivo')} style={{ padding: '12px 14px', cursor: 'pointer' }}># / Fase</th>
+                  <th onClick={() => handleOrdenar('consecutivo')} style={{ padding: '12px 14px', cursor: 'pointer' }}># / Cartera</th>
                   <th onClick={() => handleOrdenar('fecha_envio')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Fecha</th>
                   <th onClick={() => handleOrdenar('cajas')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Cajas</th>
-                  <th onClick={() => handleOrdenar('kilos')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Kilos</th>
+                  <th onClick={() => handleOrdenar('kilos')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Kilos / Merma</th>
                   <th>Compra Edison</th>
                   <th>Flete Macareo</th>
                   <th onClick={() => handleOrdenar('total_facturado_cliente')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Facturado Innovative</th>
@@ -1588,12 +1647,7 @@ export default function App() {
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}><Clock size={16} color={esEnRuta ? '#38bdf8' : '#eab308'} /></td>
                       <td style={{ padding: '12px 14px', fontWeight: 'bold', color: esEnRuta ? '#38bdf8' : '#eab308' }}>
                         #{p.consecutivo}
-                        <div style={{ 
-                          fontSize: '10px', 
-                          fontWeight: '800', 
-                          color: esEnRuta ? '#38bdf8' : '#eab308',
-                          marginTop: '2px' 
-                        }}>
+                        <div style={{ fontSize: '10px', fontWeight: '800', color: esEnRuta ? '#38bdf8' : '#eab308', marginTop: '2px' }}>
                           {esEnRuta ? '🚚 EN RUTA' : '🟡 SOLICITADO'}
                         </div>
                       </td>
@@ -1645,6 +1699,13 @@ export default function App() {
                 {enviosFiltrados.map((r) => {
                   const saldo = Number(r.saldo_pendiente || 0);
                   const estaSeleccionado = seleccionadosTabla.includes(r.id);
+                  const diasCartera = calcularDiasCartera(r.fecha_envio);
+                  const semaforo = obtenerColorSemaforo(diasCartera);
+
+                  // Merma del envío
+                  const kilosTeoricos = Number(r.cajas || 0) * 25;
+                  const kilosReales = Number(r.kilos || 0);
+                  const mermaKilos = kilosTeoricos - kilosReales;
 
                   return (
                     <tr key={r.id} style={{ borderBottom: `1px solid ${tema.rowBorder}`, background: estaSeleccionado ? 'rgba(56, 189, 248, 0.08)' : 'transparent' }}>
@@ -1655,11 +1716,24 @@ export default function App() {
                       </td>
                       <td style={{ padding: '12px 14px', fontWeight: 'bold' }}>
                         #{r.consecutivo}
-                        <div style={{ fontSize: '10px', color: saldo > 0 ? '#f97316' : '#22c55e' }}>{saldo > 0 ? 'EN CARTERA' : 'SALDADO'}</div>
+                        {saldo > 0 ? (
+                          <div style={{ fontSize: '10px', color: semaforo.color, fontWeight: 'bold' }}>
+                            ⏳ {diasCartera} días • {semaforo.texto}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '10px', color: '#22c55e' }}>SALDADO</div>
+                        )}
                       </td>
                       <td style={{ padding: '12px 14px', color: tema.textMuted }}>{r.fecha_envio}</td>
-                      <td style={{ padding: '12px 14px' }}>{r.cajas}</td>
-                      <td style={{ padding: '12px 14px' }}>{r.kilos} Kg</td>
+                      <td style={{ padding: '12px 14px' }}>{r.cajas} cjs</td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <b>{r.kilos} Kg</b>
+                        {mermaKilos > 0 && (
+                          <div style={{ fontSize: '10px', color: '#ef4444', fontWeight: 'bold' }}>
+                            -{mermaKilos.toFixed(1)} Kg merma
+                          </div>
+                        )}
+                      </td>
                       <td style={{ padding: '12px 14px', color: '#ef4444', fontWeight: 'bold' }}>
                         <button onClick={() => setModalEditarPrecioCompra(r)} style={{ background: 'transparent', border: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}>
                           {formatoCOP(r.precio_compra_kg)} <Edit2 size={11} color={tema.textMuted} />
@@ -1667,7 +1741,7 @@ export default function App() {
                       </td>
                       <td style={{ padding: '12px 14px', color: '#22c55e', fontWeight: '600' }}>{formatoCOP(r.total_flete)}</td>
                       <td style={{ padding: '12px 14px', fontWeight: '600' }}>{formatoCOP(r.total_facturado_cliente)}</td>
-                      <td style={{ padding: '12px 14px', fontWeight: 'bold', color: saldo > 0 ? '#f97316' : '#22c55e' }}>{formatoCOP(saldo)}</td>
+                      <td style={{ padding: '12px 14px', fontWeight: 'bold', color: saldo > 0 ? semaforo.color : '#22c55e' }}>{formatoCOP(saldo)}</td>
                       <td style={{ padding: '12px 14px', color: '#38bdf8', fontWeight: '600' }}>{formatoCOP(r.margen_bruto)}</td>
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', gap: '6px' }}>
@@ -1678,8 +1752,13 @@ export default function App() {
                             <FileText size={13} /> Cuenta
                           </button>
                           <button onClick={() => compartirPDFPorWhatsApp(r)} style={{ padding: '6px 10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Share2 size={13} /> PDF WhatsApp
+                            <Share2 size={13} /> PDF
                           </button>
+                          {saldo > 0 && (
+                            <button onClick={() => enviarRecordatorioCartera(r)} title="Cobro por WhatsApp" style={{ padding: '6px 8px', background: semaforo.bg, border: `1px solid ${semaforo.color}`, color: semaforo.color, borderRadius: '6px', cursor: 'pointer' }}>
+                              <Send size={12} />
+                            </button>
+                          )}
                           {saldo > 0 ? (
                             <button onClick={() => abrirModalAbono(r)} style={{ padding: '6px 10px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
                               <DollarSign size={13} /> Abono
@@ -1777,9 +1856,7 @@ export default function App() {
               <div onClick={() => setSeriesVisibles(s => ({ ...s, costoFruta: !s.costoFruta }))} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#ef4444', cursor: 'pointer', opacity: seriesVisibles.costoFruta ? 1 : 0.4 }}>
                 <span style={{ width: '12px', height: '3px', background: '#ef4444', borderRadius: '2px', borderBottom: '1px dashed #ef4444' }}></span> 🔴 Costo Fruta Edison
               </div>
-              <div onClick={() => setSeriesVisibles(s => ({ ...s, margen: !s.margen }))} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#22c55e', cursor: 'pointer', opacity: seriesVisibles.margen ? 1 : 0.4 }}>
-                <span style={{ width: '12px', height: '3px', background: '#22c55e', borderRadius: '2px' }}></span> 🟢 Margen Bruto Real
-              </div>
+              <div onClick={() => setSeriesVisibles(s => ({ ...s, margen: !s.margen }))} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#22c55e', cursor: 'pointer', opacity: seriesVisibles.margen ? 1 : 0.4 }}><span style={{ width: '12px', height: '3px', background: '#22c55e', borderRadius: '2px' }}></span> 🟢 Margen Bruto Real</div>
             </div>
 
             {datosGrafico.length === 0 ? (
@@ -1886,7 +1963,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL: PAGAR FLETE A MACAREO */}
+      {/* MODAL: PAGAR FLETE A MACAREO (Con propina) */}
       {modalPagarFletePedido && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '380px', border: `1px solid ${tema.border}` }}>
@@ -1906,8 +1983,18 @@ export default function App() {
               </div>
 
               <div>
-                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#22c55e' }}>Monto Pagado a Macareo (COP)</label>
-                <input type="number" step="any" required autoFocus value={formFletePedido.monto} onChange={(e) => setFormFletePedido({...formFletePedido, monto: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: '1px solid #22c55e', color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#22c55e' }}>Flete Base Macareo (COP)</label>
+                <input type="number" step="any" required autoFocus value={formFletePedido.monto} onChange={(e) => setFormFletePedido({...formFletePedido, monto: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: '1px solid #22c55e', color: '#22c55e', fontSize: '16px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', color: '#eab308', fontWeight: 'bold' }}>+ Propina / Extra Macareo (COP)</label>
+                <input type="number" step="any" value={formFletePedido.propina} onChange={(e) => setFormFletePedido({...formFletePedido, propina: e.target.value})} placeholder="0" style={{ width: '100%', padding: '8px', background: tema.inputBg, border: '1px solid #eab308', color: '#eab308', fontSize: '14px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: darkMode ? '#0b1120' : '#f8fafc', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold' }}>
+                <span>Total a registrar:</span>
+                <span style={{ color: '#22c55e' }}>{formatoCOP(Number(formFletePedido.monto || 0) + Number(formFletePedido.propina || 0))}</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
@@ -1946,6 +2033,63 @@ export default function App() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
                 <button type="button" onClick={() => setModalPagarFrutaPedido(null)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
                 <button type="submit" style={{ padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Confirmar Pago Fruta</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: LIQUIDAR BÁSCULA CON COMPARATIVO DE MERMA VISIBLE */}
+      {modalLiquidarPedido && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Confirmar Báscula Innovative</h3>
+              <button onClick={() => setModalLiquidarPedido(null)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                <span>Cajas enviadas:</span> <b>{modalLiquidarPedido.cajas} cajas ({Number(modalLiquidarPedido.cajas) * 25} Kg teór.)</b>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Flete a Cobrar a Innovative:</span>
+                <b style={{ color: '#22c55e' }}>$32.000 / cja ({formatoCOP(Number(modalLiquidarPedido.cajas) * 32000)})</b>
+              </div>
+            </div>
+
+            <form onSubmit={confirmarLiquidacionPedido} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Consecutivo</label>
+                  <input required value={formLiquidar.consecutivo} onChange={(e) => setFormLiquidar({...formLiquidar, consecutivo: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Fecha Recepción</label>
+                  <input type="date" required value={formLiquidar.fecha_envio} onChange={(e) => setFormLiquidar({...formLiquidar, fecha_envio: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#22c55e' }}>Kilos Netos Cantados por Innovative *</label>
+                <input type="number" step="any" required placeholder="Ej: 148.50" autoFocus value={formLiquidar.kilos} onChange={(e) => setFormLiquidar({...formLiquidar, kilos: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: '1px solid #22c55e', color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              {/* Comparador de merma instantáneo al escribir los kilos */}
+              {formLiquidar.kilos && Number(formLiquidar.kilos) > 0 && (
+                <div style={{ background: (Number(modalLiquidarPedido.cajas) * 25 - Number(formLiquidar.kilos)) > 0 ? 'rgba(239, 68, 68, 0.12)' : 'rgba(34, 197, 94, 0.12)', padding: '10px', borderRadius: '8px', border: `1px solid ${(Number(modalLiquidarPedido.cajas) * 25 - Number(formLiquidar.kilos)) > 0 ? '#ef4444' : '#22c55e'}`, fontSize: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                    <span>Merma calculada:</span>
+                    <span style={{ color: (Number(modalLiquidarPedido.cajas) * 25 - Number(formLiquidar.kilos)) > 0 ? '#ef4444' : '#22c55e' }}>
+                      {(Number(modalLiquidarPedido.cajas) * 25 - Number(formLiquidar.kilos)).toFixed(1)} Kg ({(((Number(modalLiquidarPedido.cajas) * 25 - Number(formLiquidar.kilos)) / (Number(modalLiquidarPedido.cajas) * 25)) * 100).toFixed(1)}%)
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button type="button" onClick={() => setModalLiquidarPedido(null)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Crear Despacho Oficial</button>
               </div>
             </form>
           </div>
