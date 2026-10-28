@@ -307,17 +307,43 @@ export default function App() {
     }, 1000);
   }
 
-  // ENVÍO DE WHATSAPP CON CODIFICACIÓN TOTAL
+  function abrirModalCuentaSeguro(r) {
+    const kilos = Number(r.kilos || 0);
+    const cajas = Number(r.cajas || 0);
+    const precioVenta = Number(r.precio_venta_kg || 11200);
+    const fleteCaja = Number(r.costo_flete_caja || 32000);
+
+    const ventaFruta = Number(r.total_venta_fruta) || (kilos * precioVenta);
+    const fleteTotal = Number(r.total_flete) || (cajas * fleteCaja);
+    const totalFacturado = Number(r.total_facturado_cliente) || (ventaFruta + fleteTotal);
+
+    setModalCuentaCobro({
+      ...r,
+      total_venta_fruta_calc: ventaFruta,
+      total_flete_calc: fleteTotal,
+      total_facturado_calc: totalFacturado,
+      precio_venta_kg_calc: precioVenta,
+      kilos_calc: kilos,
+      cajas_calc: cajas
+    });
+  }
+
   function enviarWhatsApp(envio) {
+    const kilos = Number(envio.kilos_calc || envio.kilos || 0);
+    const cajas = Number(envio.cajas_calc || envio.cajas || 0);
+    const fruta = Number(envio.total_venta_fruta_calc || envio.total_venta_fruta || (kilos * (envio.precio_venta_kg || 11200)));
+    const flete = Number(envio.total_flete_calc || envio.total_flete || (cajas * 32000));
+    const total = Number(envio.total_facturado_calc || envio.total_facturado_cliente || (fruta + flete));
+
     const lineas = [
       `*CUENTA DE COBRO #${envio.consecutivo}*`,
       `📅 Fecha: ${envio.fecha_envio}`,
       `🥑 Concepto: Aguacate Hass - Grueso`,
-      `📦 Cantidad: ${envio.kilos} Kg (${envio.cajas} Cajas)`,
-      `💵 Fruta: ${formatoCOP(envio.total_venta_fruta)}`,
-      `🚚 Flete (${envio.cajas} cajas @ $32.000): ${formatoCOP(envio.total_flete)}`,
+      `📦 Cantidad: ${kilos} Kg (${cajas} Cajas)`,
+      `💵 Fruta: ${formatoCOP(fruta)}`,
+      `🚚 Flete (${cajas} cajas @ $32.000): ${formatoCOP(flete)}`,
       `---------------------------------`,
-      `💰 *TOTAL A PAGAR: ${formatoCOP(envio.total_facturado_cliente)}*`,
+      `💰 *TOTAL A PAGAR: ${formatoCOP(total)}*`,
       `---------------------------------`,
       `💳 *Datos Bancarios:*`,
       `Bancolombia Ahorros # 554 879 253 72`,
@@ -409,7 +435,6 @@ export default function App() {
     }
   }
 
-  // Pagar Flete Macareo en Pedido
   function abrirModalFlete(pedido) {
     setModalPagarFletePedido(pedido);
     const montoCalculado = Number(pedido.cajas || 0) * Number(pedido.costo_flete_caja || 20000);
@@ -441,7 +466,6 @@ export default function App() {
     }
   }
 
-  // Pagar Fruta Edison en Pedido
   function abrirModalFruta(pedido) {
     setModalPagarFrutaPedido(pedido);
     const montoCalculado = Number(pedido.cajas || 0) * 25 * Number(pedido.precio_compra_kg || 6000);
@@ -472,7 +496,6 @@ export default function App() {
     }
   }
 
-  // LIQUIDAR PEDIDO (FLETE COBRADO A CLIENTE ES SIEMPRE 32000)
   function iniciarLiquidacionPedido(pedidoItem) {
     setModalLiquidarPedido(pedidoItem);
     setFormLiquidar({
@@ -1021,7 +1044,6 @@ export default function App() {
     return direccionOrden === 'asc' ? <ArrowUp size={12} color="#38bdf8" /> : <ArrowDown size={12} color="#38bdf8" />;
   };
 
-  // Pantalla de bloqueo
   if (!autenticado) {
     return (
       <div style={{ minHeight: '100vh', background: '#090d16', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -1071,40 +1093,6 @@ export default function App() {
   return (
     <div style={{ padding: '12px', fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '1280px', margin: '0 auto', background: tema.bg, color: tema.textMain, minHeight: '100vh', boxSizing: 'border-box', overflowX: 'hidden' }}>
       
-      {/* REGLAS CSS PARA IMPRESIÓN LIMPIA DE 1 SOLA PÁGINA */}
-      <style>{`
-        @media print {
-          body {
-            background-color: #ffffff !important;
-            color: #000000 !important;
-          }
-          body > #root > div > *:not(#modal-impresion-contenedor) {
-            display: none !important;
-          }
-          #modal-impresion-contenedor {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            background: #ffffff !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            z-index: 999999 !important;
-          }
-          #botones-modal-cuenta {
-            display: none !important;
-          }
-          #area-cuenta-cobro {
-            width: 100% !important;
-            max-width: 100% !important;
-            padding: 20px !important;
-            box-shadow: none !important;
-            border: none !important;
-          }
-        }
-      `}</style>
-
       {/* HEADER */}
       <div style={{ marginBottom: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -1463,7 +1451,7 @@ export default function App() {
                       </button>
 
                       <button
-                        onClick={() => setModalCuentaCobro(r)}
+                        onClick={() => abrirModalCuentaSeguro(r)}
                         style={{ padding: '9px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       >
                         <FileText size={14} /> Cuenta
@@ -1621,7 +1609,7 @@ export default function App() {
                           <button onClick={() => abrirModalEditarDespacho(r)} style={{ padding: '6px 8px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '6px', cursor: 'pointer' }}>
                             <Edit2 size={12} color="#38bdf8" />
                           </button>
-                          <button onClick={() => setModalCuentaCobro(r)} style={{ padding: '6px 10px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+                          <button onClick={() => abrirModalCuentaSeguro(r)} style={{ padding: '6px 10px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
                             <FileText size={13} /> Cuenta
                           </button>
                           <button onClick={() => enviarWhatsApp(r)} style={{ padding: '6px 10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
@@ -1779,7 +1767,6 @@ export default function App() {
 
                     return (
                       <g key={i}>
-                        {/* 1. Azul - Facturado */}
                         {seriesVisibles.venta && (
                           <>
                             <circle cx={x} cy={yVenta} r="4" fill="#38bdf8" stroke={tema.cardBg} strokeWidth="1.5" />
@@ -1787,7 +1774,6 @@ export default function App() {
                           </>
                         )}
 
-                        {/* 2. Rojo - Edison */}
                         {seriesVisibles.costoFruta && (
                           <>
                             <circle cx={x} cy={yCosto} r="3.5" fill="#ef4444" stroke={tema.cardBg} strokeWidth="1.5" />
@@ -1795,7 +1781,6 @@ export default function App() {
                           </>
                         )}
 
-                        {/* 3. Verde - Margen */}
                         {seriesVisibles.margen && (
                           <>
                             <circle cx={x} cy={yMargen} r="4.5" fill="#22c55e" stroke={tema.cardBg} strokeWidth="1.5" />
@@ -1928,6 +1913,159 @@ export default function App() {
                 <button type="submit" style={{ padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Confirmar Pago Fruta</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL CUENTA DE COBRO BLINDADO Y ALINEADO ==================== */}
+      {modalCuentaCobro && (
+        <div 
+          onClick={() => setModalCuentaCobro(null)}
+          style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            backgroundColor: 'rgba(0, 0, 0, 0.88)', 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            zIndex: 9999, 
+            padding: '16px' 
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{ 
+              background: '#ffffff', 
+              color: '#0f172a', 
+              width: '100%', 
+              maxWidth: '560px', 
+              borderRadius: '16px', 
+              padding: '24px', 
+              maxHeight: '92vh', 
+              overflowY: 'auto',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
+            }}
+          >
+            {/* Botonera superior */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  onClick={() => imprimirConNombre(modalCuentaCobro)} 
+                  style={{ padding: '7px 14px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+                >
+                  <Printer size={15} /> Imprimir / PDF
+                </button>
+                <button 
+                  onClick={() => enviarWhatsApp(modalCuentaCobro)} 
+                  style={{ padding: '7px 14px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+                >
+                  <Send size={15} /> WhatsApp
+                </button>
+              </div>
+              <button 
+                onClick={() => setModalCuentaCobro(null)} 
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            {/* Cabecera */}
+            <div style={{ textAlign: 'center', borderBottom: '2px solid #0f172a', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h2 style={{ margin: 0, fontSize: '18px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                CUENTA DE COBRO # {modalCuentaCobro.consecutivo}
+              </h2>
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginTop: '2px' }}>
+                Fecha: {modalCuentaCobro.fecha_envio}
+              </div>
+            </div>
+
+            {/* Datos Cliente / Beneficiario */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '16px', lineHeight: '1.4' }}>
+              <div>
+                <b>Cliente:</b> Innovative Kitchen SAS<br />
+                <span>NIT # 901.069.237-4</span>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <b>Beneficiario:</b> Elkin Bohórquez Tarud<br />
+                <span>C.C. 72.271.189</span>
+              </div>
+            </div>
+
+            {/* Tabla Conceptos */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', marginBottom: '16px' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderTop: '1px solid #0f172a', borderBottom: '1px solid #0f172a' }}>
+                  <th style={{ padding: '8px', textAlign: 'left' }}>Concepto</th>
+                  <th style={{ padding: '8px', textAlign: 'center' }}>Cant</th>
+                  <th style={{ padding: '8px', textAlign: 'right' }}>Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                  <td style={{ padding: '8px' }}>
+                    Aguacate Hass - Grueso ({formatoCOP(modalCuentaCobro.precio_venta_kg_calc)}/Kg)
+                  </td>
+                  <td style={{ padding: '8px', textAlign: 'center' }}>
+                    {modalCuentaCobro.kilos_calc} Kg
+                  </td>
+                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>
+                    {formatoCOP(modalCuentaCobro.total_venta_fruta_calc)}
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid #0f172a' }}>
+                  <td style={{ padding: '8px' }}>
+                    Envío Transporte ({modalCuentaCobro.cajas_calc} cajas @ $32.000)
+                  </td>
+                  <td style={{ padding: '8px', textAlign: 'center' }}>
+                    {modalCuentaCobro.cajas_calc} cjs
+                  </td>
+                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>
+                    {formatoCOP(modalCuentaCobro.total_flete_calc)}
+                  </td>
+                </tr>
+                <tr style={{ background: '#f8fafc' }}>
+                  <td colSpan="2" style={{ padding: '10px 8px', fontWeight: 'bold' }}>TOTAL A PAGAR</td>
+                  <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: '900', fontSize: '15px' }}>
+                    {formatoCOP(modalCuentaCobro.total_facturado_calc)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Banco */}
+            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', fontSize: '12px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+              <div>Forma de Pago: <b>Bancolombia Ahorros # 554 879 253 72</b></div>
+              <div>A nombre de: <b>Elkin Bohórquez Tarud</b> (CC 72.271.189)</div>
+            </div>
+
+            {/* Firma alineada estrictamente a la izquierda */}
+            <div style={{ marginTop: '20px', textAlign: 'left' }}>
+              <div style={{ width: '220px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <div style={{ minHeight: '52px', display: 'flex', alignItems: 'flex-end' }}>
+                  <img 
+                    src="/firma.png" 
+                    alt="Firma" 
+                    style={{ 
+                      maxHeight: '50px', 
+                      maxWidth: '180px', 
+                      objectFit: 'contain',
+                      mixBlendMode: 'multiply',
+                      display: 'block',
+                      marginBottom: '-4px'
+                    }} 
+                  />
+                </div>
+                <div style={{ width: '100%', borderTop: '1.5px solid #0f172a', paddingTop: '4px' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '13px' }}>Elkin Bohórquez Tarud</div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>C.C. 72.271.189</div>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
