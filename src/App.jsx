@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabase';
 import { 
   PlusCircle, Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
-  BarChart3, ListFilter, Search, Filter, DollarSign, CheckCircle2, 
+  BarChart3, ListFilter, Search, DollarSign, CheckCircle2, 
   ArrowUpRight, Truck, Check, Edit2, FileText, Printer, Send, CheckSquare, Square,
   ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock
 } from 'lucide-react';
@@ -12,7 +12,6 @@ export default function App() {
   const [pinInput, setPinInput] = useState('');
   const [errorBiometria, setErrorBiometria] = useState('');
 
-  // Detección de dispositivo móvil
   const [esMovil, setEsMovil] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
 
   useEffect(() => {
@@ -29,9 +28,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   // Modales
-  const [modalAbierto, setModalAbierto] = useState(false);
   const [modalNuevoPedido, setModalNuevoPedido] = useState(false);
   const [modalLiquidarPedido, setModalLiquidarPedido] = useState(null);
+  const [modalPagarFletePedido, setModalPagarFletePedido] = useState(null);
   const [modalAbonoAbierto, setModalAbonoAbierto] = useState(false);
   const [modalAbonoMultipleAbierto, setModalAbonoMultipleAbierto] = useState(false);
   const [modalPagoProvAbierto, setModalPagoProvAbierto] = useState(false);
@@ -53,7 +52,13 @@ export default function App() {
   const [montoRealRecibido, setMontoRealRecibido] = useState('');
   const [esDescuentoDefinitivo, setEsDescuentoDefinitivo] = useState(true);
 
-  // Formularios
+  // Formulario Flete Pedido
+  const [formFletePedido, setFormFletePedido] = useState({
+    monto: '',
+    fecha: new Date().toISOString().split('T')[0]
+  });
+
+  // Formularios Liquidación
   const [formLiquidar, setFormLiquidar] = useState({
     consecutivo: '',
     fecha_envio: new Date().toISOString().split('T')[0],
@@ -66,8 +71,9 @@ export default function App() {
     cajas: '',
     precio_compra_kg: 6000,
     precio_venta_kg: 11200,
-    costo_flete_caja: 32000,
-    notas: ''
+    costo_flete_caja: 20000,
+    notas: '',
+    consecutivo: ''
   });
 
   const [formEdicion, setFormEdicion] = useState({
@@ -111,7 +117,7 @@ export default function App() {
 
   const PRECIOS_COMPRA = [6000, 6500, 7000, 7500, 8000, 8500, 9000];
   const PRECIOS_VENTA = [9500, 10000, 10200, 10500, 11000, 11200, 11500, 12000, 15750];
-  const TARIFAS_FLETE = [32000, 30000, 35000];
+  const TARIFAS_FLETE = [20000, 30000, 32000, 35000];
 
   useEffect(() => {
     const sesion = sessionStorage.getItem('aguacates_auth_ok');
@@ -149,9 +155,9 @@ export default function App() {
           return;
         }
       }
-      throw new Error('Sin biometría activa');
+      throw new Error('Sin biometria');
     } catch (err) {
-      setErrorBiometria('Huella no reconocida o cancelada. Usa tu PIN.');
+      setErrorBiometria('Usa tu PIN de acceso.');
     }
   }
 
@@ -162,7 +168,7 @@ export default function App() {
       setAutenticado(true);
       cargarDatos();
     } else {
-      setErrorBiometria('PIN incorrecto. Prueba de nuevo.');
+      setErrorBiometria('PIN incorrecto.');
       setPinInput('');
     }
   }
@@ -173,13 +179,11 @@ export default function App() {
     setPinInput('');
   }
 
-  function calcularSiguienteConsecutivo(listaEnvios) {
-    if (!listaEnvios || listaEnvios.length === 0) return '000001';
-    const numeros = listaEnvios.map(e => {
-      const limpio = String(e.consecutivo || '').replace(/\D/g, '');
-      return limpio ? parseInt(limpio, 10) : 0;
-    });
-    return String(Math.max(...numeros, 0) + 1).padStart(6, '0');
+  function calcularSiguienteConsecutivo(listaEnvios, listaPedidos) {
+    const numerosEnvios = (listaEnvios || []).map(e => parseInt(String(e.consecutivo || '').replace(/\D/g, '') || '0', 10));
+    const numerosPedidos = (listaPedidos || []).map(p => parseInt(String(p.consecutivo || '').replace(/\D/g, '') || '0', 10));
+    const maximo = Math.max(...numerosEnvios, ...numerosPedidos, 0);
+    return String(maximo + 1).padStart(6, '0');
   }
 
   async function cargarDatos() {
@@ -309,13 +313,15 @@ export default function App() {
   }
 
   function abrirModalCrearPedido() {
+    const proxConsecutivo = calcularSiguienteConsecutivo(envios, pedidos);
     setFormPedido({
       fecha_pedido: new Date().toISOString().split('T')[0],
       cajas: '',
       precio_compra_kg: 6000,
       precio_venta_kg: 11200,
-      costo_flete_caja: 32000,
-      notas: ''
+      costo_flete_caja: 20000,
+      notas: '',
+      consecutivo: proxConsecutivo
     });
     setModalNuevoPedido(true);
   }
@@ -323,26 +329,61 @@ export default function App() {
   async function guardarNuevoPedido(e) {
     e.preventDefault();
     const { error } = await supabase.from('pedidos').insert([{
+      consecutivo: formPedido.consecutivo,
       fecha_pedido: formPedido.fecha_pedido,
       cajas: Number(formPedido.cajas),
       precio_compra_kg: Number(formPedido.precio_compra_kg),
       precio_venta_kg: Number(formPedido.precio_venta_kg),
       costo_flete_caja: Number(formPedido.costo_flete_caja),
-      notas: formPedido.notas
+      notas: formPedido.notas,
+      estado_fase: 'solicitado',
+      flete_pagado: false,
+      monto_flete_pagado: 0
     }]);
 
     if (!error) {
       setModalNuevoPedido(false);
       await cargarDatos();
     } else {
-      alert('Error guardando pedido: ' + error.message);
+      alert('Error: ' + error.message);
+    }
+  }
+
+  function abrirModalFlete(pedido) {
+    setModalPagarFletePedido(pedido);
+    const montoCalculado = Number(pedido.cajas || 0) * Number(pedido.costo_flete_caja || 20000);
+    setFormFletePedido({
+      monto: pedido.monto_flete_pagado && Number(pedido.monto_flete_pagado) > 0 ? pedido.monto_flete_pagado : montoCalculado,
+      fecha: pedido.fecha_pago_flete || new Date().toISOString().split('T')[0]
+    });
+  }
+
+  async function guardarFletePedido(e) {
+    e.preventDefault();
+    if (!modalPagarFletePedido) return;
+
+    const { error } = await supabase
+      .from('pedidos')
+      .update({
+        flete_pagado: true,
+        monto_flete_pagado: Number(formFletePedido.monto),
+        fecha_pago_flete: formFletePedido.fecha,
+        estado_fase: 'en_ruta'
+      })
+      .eq('id', modalPagarFletePedido.id);
+
+    if (!error) {
+      setModalPagarFletePedido(null);
+      await cargarDatos();
+    } else {
+      alert('Error guardando flete: ' + error.message);
     }
   }
 
   function iniciarLiquidacionPedido(pedidoItem) {
     setModalLiquidarPedido(pedidoItem);
     setFormLiquidar({
-      consecutivo: pedidoItem.consecutivo_asignado || calcularSiguienteConsecutivo(envios),
+      consecutivo: pedidoItem.consecutivo || calcularSiguienteConsecutivo(envios, pedidos),
       fecha_envio: pedidoItem.fecha_pedido,
       kilos: '',
       notas: pedidoItem.notas || ''
@@ -353,7 +394,7 @@ export default function App() {
     e.preventDefault();
     if (!modalLiquidarPedido || !formLiquidar.kilos || Number(formLiquidar.kilos) <= 0) return;
 
-    const { error: errorEnvio } = await supabase.from('envios').insert([{
+    const { data: envioCreado, error: errorEnvio } = await supabase.from('envios').insert([{
       consecutivo: formLiquidar.consecutivo,
       fecha_envio: formLiquidar.fecha_envio,
       cajas: Number(modalLiquidarPedido.cajas),
@@ -362,14 +403,30 @@ export default function App() {
       precio_venta_kg: Number(modalLiquidarPedido.precio_venta_kg),
       costo_flete_caja: Number(modalLiquidarPedido.costo_flete_caja),
       notas: formLiquidar.notas
-    }]);
+    }]).select();
 
-    if (!errorEnvio) {
-      await supabase.from('pedidos').update({ estado: 'liquidado' }).eq('id', modalLiquidarPedido.id);
+    if (!errorEnvio && envioCreado && envioCreado.length > 0) {
+      const nuevoId = envioCreado[0].id;
+
+      if (modalLiquidarPedido.flete_pagado) {
+        const provMacareo = proveedores.find(p => p.tipo === 'transporte');
+        if (provMacareo) {
+          await supabase.from('pagos_proveedor').insert([{
+            proveedor_id: provMacareo.id,
+            envio_id: nuevoId,
+            monto: Number(modalLiquidarPedido.monto_flete_pagado || (modalLiquidarPedido.cajas * modalLiquidarPedido.costo_flete_caja)),
+            fecha: modalLiquidarPedido.fecha_pago_flete || formLiquidar.fecha_envio,
+            concepto: 'transporte',
+            notas: `Flete cancelado al despachar (#${modalLiquidarPedido.consecutivo})`
+          }]);
+        }
+      }
+
+      await supabase.from('pedidos').update({ estado: 'liquidado', estado_fase: 'liquidado' }).eq('id', modalLiquidarPedido.id);
       setModalLiquidarPedido(null);
       await cargarDatos();
     } else {
-      alert('Error liquidando pedido: ' + errorEnvio.message);
+      alert('Error liquidando pedido: ' + (errorEnvio?.message || 'Error'));
     }
   }
 
@@ -439,7 +496,7 @@ export default function App() {
       setModalEditarPrecioCompra(null);
       await cargarDatos();
     } else {
-      alert('Error actualizando precio: ' + error.message);
+      alert('Error: ' + error.message);
     }
   }
 
@@ -556,7 +613,7 @@ export default function App() {
       setSeleccionadosTabla([]);
       await cargarDatos();
     } else {
-      alert('Error registrando abono múltiple: ' + error.message);
+      alert('Error: ' + error.message);
     }
   }
 
@@ -624,7 +681,13 @@ export default function App() {
     .reduce((acc, p) => acc + Number(p.monto || 0), 0);
 
   const deudaEdison = Math.max(0, totalCostoFruta - pagadoFruta);
-  const deudaMacareo = Math.max(0, totalCostoFlete - pagadoFlete);
+  
+  // Fletes pendientes: despachos liquidados + pedidos activos sin flete pago
+  const fletesPedidosPendientes = pedidos
+    .filter(p => p.estado !== 'liquidado' && !p.flete_pagado)
+    .reduce((sum, p) => sum + (Number(p.cajas || 0) * Number(p.costo_flete_caja || 20000)), 0);
+
+  const deudaMacareo = Math.max(0, totalCostoFlete - pagadoFlete) + fletesPedidosPendientes;
 
   const despachosPendientesCliente = useMemo(() => {
     return envios.filter(e => Number(e.saldo_pendiente || 0) > 0);
@@ -675,19 +738,24 @@ export default function App() {
     return Array.from(meses).sort().reverse();
   }, [envios]);
 
+  // Cruzar pedidos y asegurar sus datos
   const pedidosPendientesConConsecutivo = useMemo(() => {
-    const pedidosActivos = pedidos.filter(p => p.estado === 'pendiente');
-    let baseNum = envios.length > 0 
-      ? Math.max(...envios.map(e => parseInt(String(e.consecutivo || '').replace(/\D/g, '') || '0', 10)), 0)
-      : 0;
-
-    return pedidosActivos.map((p, idx) => ({
-      ...p,
-      esPedido: true,
-      consecutivo: String(baseNum + idx + 1).padStart(6, '0'),
-      consecutivo_asignado: String(baseNum + idx + 1).padStart(6, '0'),
-      fecha_envio: p.fecha_pedido
-    }));
+    const pedidosActivos = pedidos.filter(p => p.estado !== 'liquidado');
+    return pedidosActivos.map((p, idx) => {
+      let num = p.consecutivo;
+      if (!num) {
+        let baseNum = envios.length > 0 
+          ? Math.max(...envios.map(e => parseInt(String(e.consecutivo || '').replace(/\D/g, '') || '0', 10)), 0)
+          : 0;
+        num = String(baseNum + idx + 1).padStart(6, '0');
+      }
+      return {
+        ...p,
+        consecutivo: num,
+        esPedido: true,
+        fecha_envio: p.fecha_pedido
+      };
+    });
   }, [pedidos, envios]);
 
   const enviosFiltrados = useMemo(() => {
@@ -965,7 +1033,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* ==================== LAS 6 TARJETAS KPI (GRID RESPONSIVE) ==================== */}
+      {/* ==================== 6 TARJETAS KPI ==================== */}
       <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr 1fr' : 'repeat(auto-fit, minmax(190px, 1fr))', gap: '8px', marginBottom: '14px' }}>
         
         {/* 1. Por Cobrar */}
@@ -999,20 +1067,20 @@ export default function App() {
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>DEBO A MACAREO</span>
-            <Truck size={13} color="#22c55e" />
+            <Truck size={13} color={deudaMacareo === 0 ? '#22c55e' : '#f97316'} />
           </div>
-          <div style={{ fontSize: '18px', fontWeight: '800', color: deudaMacareo === 0 ? '#22c55e' : '#eab308', marginTop: '4px' }}>
+          <div style={{ fontSize: '18px', fontWeight: '800', color: deudaMacareo === 0 ? '#22c55e' : '#f97316', marginTop: '4px' }}>
             {formatoCOP(deudaMacareo)}
           </div>
-          <div style={{ fontSize: '10px', color: '#22c55e', marginTop: '2px', fontWeight: '600' }}>
-            ✅ Fletes al día ($0)
+          <div style={{ fontSize: '10px', color: deudaMacareo === 0 ? '#22c55e' : '#f97316', marginTop: '2px', fontWeight: '600' }}>
+            {deudaMacareo === 0 ? '✅ Fletes al día ($0)' : `⚠️ Pendiente flete (#594)`}
           </div>
         </div>
 
         {/* 4. Merma / Rendimiento */}
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: '1px solid rgba(234, 179, 8, 0.4)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: '#eab308', fontSize: '10px', fontWeight: '800' }}>
-            <span>MERMA / RENDIMIENTO</span>
+            <span>MERMA / BÁSCULA</span>
             <Scale size={13} color="#eab308" />
           </div>
           <div style={{ fontSize: '18px', fontWeight: '800', color: metricaMerma.kilosDiferencia > 0 ? '#f97316' : '#22c55e', marginTop: '4px' }}>
@@ -1073,69 +1141,99 @@ export default function App() {
       {/* PESTAÑAS */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
         <button onClick={() => setPestanaActiva('registros')} style={{ flex: 1, padding: '8px', background: pestanaActiva === 'registros' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'registros' ? '#38bdf8' : tema.border}`, borderRadius: '8px', color: pestanaActiva === 'registros' ? '#38bdf8' : tema.textMuted, fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
-          Registros ({enviosFiltrados.length})
+          Registros ({enviosFiltrados.length + pedidosPendientesConConsecutivo.length})
         </button>
         <button onClick={() => setPestanaActiva('dashboard')} style={{ flex: 1, padding: '8px', background: pestanaActiva === 'dashboard' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'dashboard' ? '#38bdf8' : tema.border}`, borderRadius: '8px', color: pestanaActiva === 'dashboard' ? '#38bdf8' : tema.textMuted, fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
           Gráfica
         </button>
       </div>
 
-      {/* VISTA 1: REGISTROS */}
+      {/* VISTA REGISTROS */}
       {pestanaActiva === 'registros' && (
         esMovil ? (
-          /* ==================== VISTA MÓVIL (TARJETAS NATIVAS) ==================== */
+          /* ==================== VISTA MÓVIL EN TARJETAS ==================== */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {/* PEDIDOS PENDIENTES */}
-            {pedidosPendientesConConsecutivo.map((p) => (
-              <div 
-                key={p.id}
-                style={{
-                  background: tema.cardBg,
-                  borderRadius: '14px',
-                  padding: '14px',
-                  border: '1px solid rgba(234, 179, 8, 0.4)',
-                  borderLeft: '4px solid #eab308'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontWeight: '900', fontSize: '17px', color: '#eab308' }}>#{p.consecutivo}</span>
-                      <span style={{ padding: '2px 6px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', borderRadius: '4px', fontSize: '10px', fontWeight: '800' }}>PEDIDO</span>
+            {/* PEDIDOS EN FASE 1 Y 2 */}
+            {pedidosPendientesConConsecutivo.map((p) => {
+              const costoFleteTotal = Number(p.cajas || 0) * Number(p.costo_flete_caja || 20000);
+              const fletePago = p.flete_pagado;
+
+              return (
+                <div 
+                  key={p.id}
+                  style={{
+                    background: tema.cardBg,
+                    borderRadius: '14px',
+                    padding: '14px',
+                    border: '1px solid rgba(234, 179, 8, 0.4)',
+                    borderLeft: '4px solid #eab308'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: '900', fontSize: '17px', color: '#eab308' }}>#{p.consecutivo}</span>
+                        <span style={{ padding: '2px 6px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', borderRadius: '4px', fontSize: '10px', fontWeight: '800' }}>
+                          {fletePago ? '🚚 EN RUTA' : '🟡 SOLICITADO'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: tema.textMuted, marginTop: '2px' }}>Fecha: {p.fecha_pedido}</div>
                     </div>
-                    <div style={{ fontSize: '12px', color: tema.textMuted, marginTop: '2px' }}>Fecha: {p.fecha_pedido}</div>
+
+                    <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308' }}>
+                      ⏳ Por pesar
+                    </span>
                   </div>
 
-                  <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308' }}>
-                    ⏳ Por pesar
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>
-                  <div>
-                    <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{p.cajas} cajas</b>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>
+                    <div>
+                      <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{p.cajas} cajas</b><br />
+                      <span style={{ color: tema.textMuted }}>Compra Edison:</span> <b style={{ color: '#ef4444' }}>{formatoCOP(p.precio_compra_kg)}/Kg</b>
+                    </div>
+                    <div>
+                      <span style={{ color: tema.textMuted }}>Flete Macareo:</span><br />
+                      {fletePago ? (
+                        <b style={{ color: '#22c55e' }}>✅ PAGO ({formatoCOP(p.monto_flete_pagado || costoFleteTotal)})</b>
+                      ) : (
+                        <b style={{ color: '#f97316' }}>⚠️ PENDIENTE ({formatoCOP(costoFleteTotal)})</b>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <span style={{ color: tema.textMuted }}>Compra Edison:</span> <b style={{ color: '#ef4444' }}>{formatoCOP(p.precio_compra_kg)}/Kg</b>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {!fletePago ? (
+                      <button
+                        onClick={() => abrirModalFlete(p)}
+                        style={{ flex: 1, padding: '10px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                      >
+                        <Truck size={14} /> Pagar Flete
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => abrirModalFlete(p)}
+                        style={{ padding: '8px 10px', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', fontWeight: 'bold', fontSize: '11px', cursor: 'pointer' }}
+                      >
+                        Flete Pago
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => iniciarLiquidacionPedido(p)}
+                      style={{ flex: 1, padding: '10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                    >
+                      <CheckCheck size={14} /> Recibir báscula
+                    </button>
+
+                    <button
+                      onClick={() => cancelarPedido(p.id)}
+                      style={{ padding: '10px', background: 'transparent', border: `1px solid ${tema.border}`, color: '#ef4444', borderRadius: '8px', cursor: 'pointer' }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 </div>
-
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={() => iniciarLiquidacionPedido(p)}
-                    style={{ flex: 1, padding: '11px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-                  >
-                    <CheckCheck size={16} /> Recibir báscula
-                  </button>
-                  <button
-                    onClick={() => cancelarPedido(p.id)}
-                    style={{ padding: '11px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: '#ef4444', borderRadius: '8px', cursor: 'pointer' }}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* DESPACHOS FACTURADOS */}
             {loading ? (
@@ -1159,7 +1257,12 @@ export default function App() {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                       <div>
-                        <div style={{ fontWeight: '900', fontSize: '17px' }}>#{r.consecutivo}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontWeight: '900', fontSize: '17px' }}>#{r.consecutivo}</span>
+                          <span style={{ padding: '2px 6px', background: saldo > 0 ? 'rgba(249, 115, 22, 0.15)' : 'rgba(34, 197, 94, 0.15)', color: saldo > 0 ? '#f97316' : '#22c55e', borderRadius: '4px', fontSize: '10px', fontWeight: '800' }}>
+                            {saldo > 0 ? 'EN CARTERA' : 'SALDADO'}
+                          </span>
+                        </div>
                         <div style={{ fontSize: '12px', color: tema.textMuted, marginTop: '2px' }}>{r.fecha_envio}</div>
                       </div>
 
@@ -1167,7 +1270,7 @@ export default function App() {
                         <div style={{ fontWeight: '800', fontSize: '16px', color: saldo > 0 ? '#f97316' : '#22c55e' }}>
                           {saldo > 0 ? formatoCOP(saldo) : '✅ Pagado'}
                         </div>
-                        <div style={{ fontSize: '10px', color: tema.textMuted }}>{saldo > 0 ? 'Saldo pendiente' : 'Saldado'}</div>
+                        <div style={{ fontSize: '10px', color: tema.textMuted }}>{saldo > 0 ? 'Saldo Innovative' : 'Saldado'}</div>
                       </div>
                     </div>
 
@@ -1224,7 +1327,7 @@ export default function App() {
             )}
           </div>
         ) : (
-          /* ==================== VISTA PC (TABLA COMPLETA) ==================== */
+          /* ==================== VISTA PC EN TABLA ==================== */
           <div style={{ background: tema.cardBg, borderRadius: '14px', border: `1px solid ${tema.border}`, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
@@ -1234,41 +1337,59 @@ export default function App() {
                       {seleccionadosTabla.length > 0 && seleccionadosTabla.length === enviosFiltrados.length ? <CheckSquare size={16} color="#38bdf8" /> : <Square size={16} color={tema.textMuted} />}
                     </div>
                   </th>
-                  <th onClick={() => handleOrdenar('consecutivo')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Consecutivo</th>
+                  <th onClick={() => handleOrdenar('consecutivo')} style={{ padding: '12px 14px', cursor: 'pointer' }}># / Fase</th>
                   <th onClick={() => handleOrdenar('fecha_envio')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Fecha</th>
                   <th onClick={() => handleOrdenar('cajas')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Cajas</th>
                   <th onClick={() => handleOrdenar('kilos')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Kilos</th>
+                  <th>Flete Macareo</th>
                   <th onClick={() => handleOrdenar('precio_compra_kg')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Compra Edison</th>
                   <th onClick={() => handleOrdenar('total_facturado_cliente')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Facturado</th>
-                  <th onClick={() => handleOrdenar('saldo_pendiente')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Saldo Cliente</th>
+                  <th onClick={() => handleOrdenar('saldo_pendiente')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Saldo Innovative</th>
                   <th onClick={() => handleOrdenar('margen_bruto')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Margen</th>
                   <th style={{ padding: '12px 14px', textAlign: 'center' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {pedidosPendientesConConsecutivo.map((p) => (
-                  <tr key={p.id} style={{ borderBottom: `1px solid ${tema.rowBorder}`, background: 'rgba(234, 179, 8, 0.08)', borderLeft: '3px solid #eab308' }}>
-                    <td style={{ padding: '12px 14px', textAlign: 'center' }}><Clock size={16} color="#eab308" /></td>
-                    <td style={{ padding: '12px 14px', fontWeight: 'bold', color: '#eab308' }}>#{p.consecutivo} <span style={{ fontSize: '10px' }}>(PEDIDO)</span></td>
-                    <td style={{ padding: '12px 14px', color: tema.textMuted }}>{p.fecha_pedido}</td>
-                    <td style={{ padding: '12px 14px', fontWeight: 'bold' }}>{p.cajas} cajas</td>
-                    <td style={{ padding: '12px 14px' }}><span style={{ padding: '3px 6px', borderRadius: '4px', fontSize: '11px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', fontWeight: 'bold' }}>⏳ Por pesar</span></td>
-                    <td style={{ padding: '12px 14px', color: '#ef4444', fontWeight: 'bold' }}>{formatoCOP(p.precio_compra_kg)}</td>
-                    <td style={{ padding: '12px 14px', color: tema.textMuted }}>Báscula pendiente</td>
-                    <td style={{ padding: '12px 14px', color: '#eab308', fontWeight: 'bold' }}>Por cobrar</td>
-                    <td style={{ padding: '12px 14px', color: tema.textMuted }}>-</td>
-                    <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                      <div style={{ display: 'inline-flex', gap: '6px' }}>
-                        <button onClick={() => iniciarLiquidacionPedido(p)} style={{ padding: '6px 12px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <CheckCheck size={14} /> Recibir báscula
-                        </button>
-                        <button onClick={() => cancelarPedido(p.id)} style={{ padding: '6px 8px', background: 'transparent', border: `1px solid ${tema.border}`, color: '#ef4444', borderRadius: '6px', cursor: 'pointer' }}>
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {pedidosPendientesConConsecutivo.map((p) => {
+                  const costoFleteTotal = Number(p.cajas || 0) * Number(p.costo_flete_caja || 20000);
+                  const fletePago = p.flete_pagado;
+
+                  return (
+                    <tr key={p.id} style={{ borderBottom: `1px solid ${tema.rowBorder}`, background: 'rgba(234, 179, 8, 0.08)', borderLeft: '3px solid #eab308' }}>
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}><Clock size={16} color="#eab308" /></td>
+                      <td style={{ padding: '12px 14px', fontWeight: 'bold', color: '#eab308' }}>
+                        #{p.consecutivo}
+                        <div style={{ fontSize: '10px' }}>{fletePago ? '🚚 EN RUTA' : '🟡 SOLICITADO'}</div>
+                      </td>
+                      <td style={{ padding: '12px 14px', color: tema.textMuted }}>{p.fecha_pedido}</td>
+                      <td style={{ padding: '12px 14px', fontWeight: 'bold' }}>{p.cajas} cajas</td>
+                      <td style={{ padding: '12px 14px' }}><span style={{ padding: '3px 6px', borderRadius: '4px', fontSize: '11px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', fontWeight: 'bold' }}>⏳ Por pesar</span></td>
+                      <td style={{ padding: '12px 14px' }}>
+                        {fletePago ? (
+                          <span style={{ color: '#22c55e', fontWeight: 'bold' }}>✅ Pago ({formatoCOP(p.monto_flete_pagado || costoFleteTotal)})</span>
+                        ) : (
+                          <button onClick={() => abrirModalFlete(p)} style={{ padding: '4px 8px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+                            Pagar {formatoCOP(costoFleteTotal)}
+                          </button>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 14px', color: '#ef4444', fontWeight: 'bold' }}>{formatoCOP(p.precio_compra_kg)}</td>
+                      <td style={{ padding: '12px 14px', color: tema.textMuted }}>Báscula pendiente</td>
+                      <td style={{ padding: '12px 14px', color: '#eab308', fontWeight: 'bold' }}>Por cobrar</td>
+                      <td style={{ padding: '12px 14px', color: tema.textMuted }}>-</td>
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', gap: '6px' }}>
+                          <button onClick={() => iniciarLiquidacionPedido(p)} style={{ padding: '6px 12px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCheck size={14} /> Recibir báscula
+                          </button>
+                          <button onClick={() => cancelarPedido(p.id)} style={{ padding: '6px 8px', background: 'transparent', border: `1px solid ${tema.border}`, color: '#ef4444', borderRadius: '6px', cursor: 'pointer' }}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
 
                 {enviosFiltrados.map((r) => {
                   const saldo = Number(r.saldo_pendiente || 0);
@@ -1281,10 +1402,14 @@ export default function App() {
                           {estaSeleccionado ? <CheckSquare size={16} color="#38bdf8" /> : <Square size={16} color={tema.textMuted} />}
                         </div>
                       </td>
-                      <td style={{ padding: '12px 14px', fontWeight: 'bold' }}>#{r.consecutivo}</td>
+                      <td style={{ padding: '12px 14px', fontWeight: 'bold' }}>
+                        #{r.consecutivo}
+                        <div style={{ fontSize: '10px', color: saldo > 0 ? '#f97316' : '#22c55e' }}>{saldo > 0 ? 'EN CARTERA' : 'SALDADO'}</div>
+                      </td>
                       <td style={{ padding: '12px 14px', color: tema.textMuted }}>{r.fecha_envio}</td>
                       <td style={{ padding: '12px 14px' }}>{r.cajas}</td>
                       <td style={{ padding: '12px 14px' }}>{r.kilos} Kg</td>
+                      <td style={{ padding: '12px 14px', color: '#22c55e', fontWeight: '600' }}>{formatoCOP(r.total_flete)}</td>
                       <td style={{ padding: '12px 14px' }}>
                         <button onClick={() => setModalEditarPrecioCompra(r)} style={{ background: 'transparent', border: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}>
                           {formatoCOP(r.precio_compra_kg)} <Edit2 size={11} color={tema.textMuted} />
@@ -1324,7 +1449,7 @@ export default function App() {
         )
       )}
 
-      {/* VISTA 2: GRÁFICO */}
+      {/* VISTA GRÁFICO */}
       {pestanaActiva === 'dashboard' && (
         <div style={{ background: tema.cardBg, padding: '16px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
@@ -1373,7 +1498,38 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== MODALES ==================== */}
+      {/* MODAL: PAGAR FLETE A MACAREO */}
+      {modalPagarFletePedido && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '380px', border: `1px solid ${tema.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Pagar Flete a Macareo</h3>
+              <button onClick={() => setModalPagarFletePedido(null)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>
+              <span>Pedido: <b>#{modalPagarFletePedido.consecutivo}</b> ({modalPagarFletePedido.cajas} cajas)</span>
+            </div>
+
+            <form onSubmit={guardarFletePedido} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: tema.textMuted }}>Fecha del Pago</label>
+                <input type="date" required value={formFletePedido.fecha} onChange={(e) => setFormFletePedido({...formFletePedido, fecha: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#22c55e' }}>Monto Pagado a Macareo (COP)</label>
+                <input type="number" step="any" required autoFocus value={formFletePedido.monto} onChange={(e) => setFormFletePedido({...formFletePedido, monto: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: '1px solid #22c55e', color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button type="button" onClick={() => setModalPagarFletePedido(null)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '8px 16px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Confirmar Pago Flete</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: NUEVO PEDIDO */}
       {modalNuevoPedido && (
@@ -1387,24 +1543,18 @@ export default function App() {
             <form onSubmit={guardarNuevoPedido} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
+                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Consecutivo</label>
+                  <input required value={formPedido.consecutivo} onChange={(e) => setFormPedido({...formPedido, consecutivo: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
                   <label style={{ fontSize: '11px', color: tema.textMuted }}>Fecha Pedido</label>
                   <input type="date" required value={formPedido.fecha_pedido} onChange={(e) => setFormPedido({...formPedido, fecha_pedido: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
                 </div>
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#eab308' }}>Número de Cajas *</label>
-                  <input type="number" step="any" required placeholder="0" autoFocus value={formPedido.cajas} onChange={(e) => setFormPedido({...formPedido, cajas: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#eab308', fontSize: '16px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
-                </div>
               </div>
 
-              <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', border: `1px solid ${tema.border}`, fontSize: '11px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                  <span style={{ color: tema.textMuted }}>Kilos Teóricos Edison:</span>
-                  <b>{Number(formPedido.cajas || 0) * 25} Kg (25 Kg / cja)</b>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: tema.textMuted }}>Costo Fruta (@ {formatoCOP(formPedido.precio_compra_kg)}):</span>
-                  <b style={{ color: '#ef4444' }}>{formatoCOP(Number(formPedido.cajas || 0) * 25 * formPedido.precio_compra_kg)}</b>
-                </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#eab308' }}>Número de Cajas *</label>
+                <input type="number" step="any" required placeholder="0" autoFocus value={formPedido.cajas} onChange={(e) => setFormPedido({...formPedido, cajas: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#eab308', fontSize: '16px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -1415,9 +1565,9 @@ export default function App() {
                   </select>
                 </div>
                 <div>
-                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Venta/Kg Innovative</label>
-                  <select value={formPedido.precio_venta_kg} onChange={(e) => setFormPedido({...formPedido, precio_venta_kg: Number(e.target.value)})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px' }}>
-                    {PRECIOS_VENTA.map(p => <option key={p} value={p}>{formatoCOP(p)}</option>)}
+                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Flete/Caja Macareo</label>
+                  <select value={formPedido.costo_flete_caja} onChange={(e) => setFormPedido({...formPedido, costo_flete_caja: Number(e.target.value)})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px' }}>
+                    {TARIFAS_FLETE.map(t => <option key={t} value={t}>{formatoCOP(t)}</option>)}
                   </select>
                 </div>
               </div>
