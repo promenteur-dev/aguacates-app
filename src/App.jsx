@@ -4,7 +4,7 @@ import {
   Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
   BarChart3, ListFilter, Search, DollarSign, CheckCircle2, 
   ArrowUpRight, Truck, Check, Edit2, FileText, Printer, Send, CheckSquare, Square,
-  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins, Award
+  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins
 } from 'lucide-react';
 
 export default function App() {
@@ -54,7 +54,7 @@ export default function App() {
   const [montoRealRecibido, setMontoRealRecibido] = useState('');
   const [esDescuentoDefinitivo, setEsDescuentoDefinitivo] = useState(true);
 
-  // Formulario Flete Pedido
+  // Formulario Flete Pedido (Costo Macareo: $20.000)
   const [formFletePedido, setFormFletePedido] = useState({
     monto: '',
     fecha: new Date().toISOString().split('T')[0]
@@ -66,15 +66,16 @@ export default function App() {
     fecha: new Date().toISOString().split('T')[0]
   });
 
-  // Formulario Liquidación
+  // Formulario Liquidación (Cobro Innovative flete fijo $32.000)
   const [formLiquidar, setFormLiquidar] = useState({
     consecutivo: '',
     fecha_envio: new Date().toISOString().split('T')[0],
     kilos: '',
+    flete_cliente_caja: 32000,
     notas: ''
   });
 
-  // Formulario Editar Pedido (#593, #594)
+  // Formulario Editar Pedido
   const [formEditarPed, setFormEditarPed] = useState({
     id: '',
     consecutivo: '',
@@ -306,27 +307,30 @@ export default function App() {
     }, 1000);
   }
 
+  // ENVÍO DE WHATSAPP CON CODIFICACIÓN TOTAL
   function enviarWhatsApp(envio) {
-    const texto = `Hola, adjunto los detalles de la Cuenta de Cobro #${envio.consecutivo} con fecha ${envio.fecha_envio}:%0A%0A` +
-      `🥑 *Concepto:* Aguacate Hass - Grueso%0A` +
-      `📦 *Cantidad:* ${envio.kilos} Kg (${envio.cajas} Cajas)%0A` +
-      `💰 *Subtotal Fruta:* ${formatoCOP(envio.total_venta_fruta)}%0A` +
-      `🚚 *Flete (${envio.cajas} cajas):* ${formatoCOP(envio.total_flete)}%0A` +
-      `🧾 *TOTAL A PAGAR:* ${formatoCOP(envio.total_facturado_cliente)}%0A%0A` +
-      `💳 *Datos Bancarios:*%0A` +
-      `Bancolombia Ahorros # 554 879 253 72%0A` +
-      `Elkin Bohórquez Tarud - CC 72.271.189%0A%0A` +
-      `Quedo atento a la confirmación de la transferencia. ¡Muchas gracias!`;
+    const lineas = [
+      `*CUENTA DE COBRO #${envio.consecutivo}*`,
+      `📅 Fecha: ${envio.fecha_envio}`,
+      `🥑 Concepto: Aguacate Hass - Grueso`,
+      `📦 Cantidad: ${envio.kilos} Kg (${envio.cajas} Cajas)`,
+      `💵 Fruta: ${formatoCOP(envio.total_venta_fruta)}`,
+      `🚚 Flete (${envio.cajas} cajas @ $32.000): ${formatoCOP(envio.total_flete)}`,
+      `---------------------------------`,
+      `💰 *TOTAL A PAGAR: ${formatoCOP(envio.total_facturado_cliente)}*`,
+      `---------------------------------`,
+      `💳 *Datos Bancarios:*`,
+      `Bancolombia Ahorros # 554 879 253 72`,
+      `Elkin Bohórquez Tarud - CC 72.271.189`,
+      ``,
+      `Quedo atento a la confirmación de la transferencia. ¡Muchas gracias!`
+    ];
 
-    const urlApp = `whatsapp://send?text=${texto}`;
-    const urlWeb = `https://web.whatsapp.com/send?text=${texto}`;
+    const mensajeCompleto = lineas.join('\n');
+    const textoCodificado = encodeURIComponent(mensajeCompleto);
+    const urlApi = `https://api.whatsapp.com/send?text=${textoCodificado}`;
 
-    const win = window.open(urlApp, '_self');
-    setTimeout(() => {
-      if (!win || win.closed) {
-        window.open(urlWeb, '_blank');
-      }
-    }, 400);
+    window.open(urlApi, '_blank');
   }
 
   function abrirModalCrearPedido() {
@@ -368,7 +372,6 @@ export default function App() {
     }
   }
 
-  // Abrir modal de edición para Pedidos (#593, #594)
   function abrirModalEditarPedido(pedido) {
     setFormEditarPed({
       id: pedido.id,
@@ -469,12 +472,14 @@ export default function App() {
     }
   }
 
+  // LIQUIDAR PEDIDO (FLETE COBRADO A CLIENTE ES SIEMPRE 32000)
   function iniciarLiquidacionPedido(pedidoItem) {
     setModalLiquidarPedido(pedidoItem);
     setFormLiquidar({
       consecutivo: pedidoItem.consecutivo || calcularSiguienteConsecutivo(envios, pedidos),
       fecha_envio: pedidoItem.fecha_pedido,
       kilos: '',
+      flete_cliente_caja: 32000,
       notas: pedidoItem.notas || ''
     });
   }
@@ -483,34 +488,37 @@ export default function App() {
     e.preventDefault();
     if (!modalLiquidarPedido || !formLiquidar.kilos || Number(formLiquidar.kilos) <= 0) return;
 
+    // Se guarda con costo_flete_caja = 32000 (lo que paga Innovative)
     const { data: envioCreado, error: errorEnvio } = await supabase.from('envios').insert([{
       consecutivo: formLiquidar.consecutivo,
       fecha_envio: formLiquidar.fecha_envio,
       cajas: Number(modalLiquidarPedido.cajas),
       kilos: Number(formLiquidar.kilos),
       precio_compra_kg: Number(modalLiquidarPedido.precio_compra_kg),
-      precio_venta_kg: Number(modalLiquidarPedido.precio_venta_kg),
-      costo_flete_caja: Number(modalLiquidarPedido.costo_flete_caja),
+      precio_venta_kg: Number(modalLiquidarPedido.precio_venta_kg || 11200),
+      costo_flete_caja: 32000,
       notas: formLiquidar.notas
     }]).select();
 
     if (!errorEnvio && envioCreado && envioCreado.length > 0) {
       const nuevoId = envioCreado[0].id;
 
+      // Transferir flete Macareo si ya fue pagado
       if (modalLiquidarPedido.flete_pagado) {
         const provMacareo = proveedores.find(p => p.tipo === 'transporte');
         if (provMacareo) {
           await supabase.from('pagos_proveedor').insert([{
             proveedor_id: provMacareo.id,
             envio_id: nuevoId,
-            monto: Number(modalLiquidarPedido.monto_flete_pagado || (modalLiquidarPedido.cajas * modalLiquidarPedido.costo_flete_caja)),
+            monto: Number(modalLiquidarPedido.monto_flete_pagado || (modalLiquidarPedido.cajas * 20000)),
             fecha: modalLiquidarPedido.fecha_pago_flete || formLiquidar.fecha_envio,
             concepto: 'transporte',
-            notas: `Flete cancelado al despachar (#${modalLiquidarPedido.consecutivo})`
+            notas: `Flete Macareo (#${modalLiquidarPedido.consecutivo})`
           }]);
         }
       }
 
+      // Transferir Edison si ya fue pagado
       if (modalLiquidarPedido.fruta_pagada) {
         const provEdison = proveedores.find(p => p.tipo !== 'transporte');
         if (provEdison) {
@@ -520,7 +528,7 @@ export default function App() {
             monto: Number(modalLiquidarPedido.monto_fruta_pagado || (modalLiquidarPedido.cajas * 25 * modalLiquidarPedido.precio_compra_kg)),
             fecha: modalLiquidarPedido.fecha_pago_fruta || formLiquidar.fecha_envio,
             concepto: 'fruta',
-            notas: `Fruta cancelada anticipadamente (#${modalLiquidarPedido.consecutivo})`
+            notas: `Fruta anticipada (#${modalLiquidarPedido.consecutivo})`
           }]);
         }
       }
@@ -529,7 +537,7 @@ export default function App() {
       setModalLiquidarPedido(null);
       await cargarDatos();
     } else {
-      alert('Error liquidando pedido: ' + (errorEnvio?.message || 'Error'));
+      alert('Error liquidando: ' + (errorEnvio?.message || 'Error'));
     }
   }
 
@@ -1016,9 +1024,6 @@ export default function App() {
     return direccionOrden === 'asc' ? <ArrowUp size={12} color="#38bdf8" /> : <ArrowDown size={12} color="#38bdf8" />;
   };
 
-  const montoRecibidoNum = Number(montoRealRecibido || totalSeleccionadoAbonoMultiple);
-  const diferenciaDescuento = Math.max(0, totalSeleccionadoAbonoMultiple - montoRecibidoNum);
-
   // Pantalla de bloqueo
   if (!autenticado) {
     return (
@@ -1069,6 +1074,41 @@ export default function App() {
   return (
     <div style={{ padding: '12px', fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '1280px', margin: '0 auto', background: tema.bg, color: tema.textMain, minHeight: '100vh', boxSizing: 'border-box', overflowX: 'hidden' }}>
       
+      {/* REGLAS CSS PARA IMPRESIÓN LIMPIA DE 1 SOLA PÁGINA */}
+      <style>{`
+        @media print {
+          body {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+          }
+          /* Ocultar toda la app en la impresión */
+          body > #root > div > *:not(#modal-impresion-contenedor) {
+            display: none !important;
+          }
+          #modal-impresion-contenedor {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            background: #ffffff !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            z-index: 999999 !important;
+          }
+          #botones-modal-cuenta {
+            display: none !important;
+          }
+          #area-cuenta-cobro {
+            width: 100% !important;
+            max-width: 100% !important;
+            padding: 20px !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+        }
+      `}</style>
+
       {/* HEADER */}
       <div style={{ marginBottom: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -1121,7 +1161,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* ==================== 6 TARJETAS KPI PRINCIPALES ==================== */}
+      {/* 6 TARJETAS KPI PRINCIPALES */}
       <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr 1fr' : 'repeat(auto-fit, minmax(190px, 1fr))', gap: '8px', marginBottom: '14px' }}>
         
         {/* 1. Por Cobrar */}
@@ -1239,7 +1279,7 @@ export default function App() {
       {/* VISTA 1: REGISTROS */}
       {pestanaActiva === 'registros' && (
         esMovil ? (
-          /* ==================== VISTA MÓVIL EN TARJETAS ==================== */
+          /* VISTA MÓVIL EN TARJETAS */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {pedidosPendientesConConsecutivo.map((p) => {
               const costoFleteTotal = Number(p.cajas || 0) * Number(p.costo_flete_caja || 20000);
@@ -1285,7 +1325,6 @@ export default function App() {
                       <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308' }}>
                         ⏳ Por pesar
                       </span>
-                      {/* Lápiz de edición móvil */}
                       <button
                         onClick={() => abrirModalEditarPedido(p)}
                         title="Editar pedido"
@@ -1460,7 +1499,7 @@ export default function App() {
             )}
           </div>
         ) : (
-          /* ==================== VISTA PC EN TABLA ==================== */
+          /* VISTA PC EN TABLA */
           <div style={{ background: tema.cardBg, borderRadius: '14px', border: `1px solid ${tema.border}`, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
@@ -1535,7 +1574,6 @@ export default function App() {
                       <td style={{ padding: '12px 14px', color: tema.textMuted }}>-</td>
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', gap: '6px' }}>
-                          {/* Lápiz de edición para PC */}
                           <button onClick={() => abrirModalEditarPedido(p)} title="Editar pedido" style={{ padding: '6px 8px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '6px', cursor: 'pointer' }}>
                             <Edit2 size={12} color="#38bdf8" />
                           </button>
@@ -1616,8 +1654,6 @@ export default function App() {
           
           {/* 6 TARJETAS ANALÍTICAS ACCIONABLES */}
           <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '10px' }}>
-            
-            {/* 1. Margen / Kg */}
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>MARGEN PROMEDIO / KG</span>
               <div style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', marginTop: '4px' }}>
@@ -1626,7 +1662,6 @@ export default function App() {
               <span style={{ fontSize: '11px', color: tema.textMuted }}>Ganancia neta limpia por kilo</span>
             </div>
 
-            {/* 2. Rentabilidad Global */}
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>RENTABILIDAD GLOBAL</span>
               <div style={{ fontSize: '20px', fontWeight: '900', color: '#38bdf8', marginTop: '4px' }}>
@@ -1635,7 +1670,6 @@ export default function App() {
               <span style={{ fontSize: '11px', color: tema.textMuted }}>Margen bruto sobre venta</span>
             </div>
 
-            {/* 3. Costo Compra Edison */}
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>COSTO MEDIO EDISON</span>
               <div style={{ fontSize: '20px', fontWeight: '900', color: '#ef4444', marginTop: '4px' }}>
@@ -1644,7 +1678,6 @@ export default function App() {
               <span style={{ fontSize: '11px', color: tema.textMuted }}>Precio ponderado de compra</span>
             </div>
 
-            {/* 4. Incidencia del Flete */}
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>INCIDENCIA DE FLETE</span>
               <div style={{ fontSize: '20px', fontWeight: '900', color: '#eab308', marginTop: '4px' }}>
@@ -1653,7 +1686,6 @@ export default function App() {
               <span style={{ fontSize: '11px', color: tema.textMuted }}>De la venta se va en fletes</span>
             </div>
 
-            {/* 5. Impacto Merma en Dinero */}
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>IMPACTO MERMA ($ COP)</span>
               <div style={{ fontSize: '20px', fontWeight: '900', color: metricaMerma.kilosDiferencia > 0 ? '#f97316' : '#22c55e', marginTop: '4px' }}>
@@ -1664,7 +1696,6 @@ export default function App() {
               </span>
             </div>
 
-            {/* 6. Margen Promedio por Despacho */}
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>UTILIDAD / DESPACHO</span>
               <div style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', marginTop: '4px' }}>
@@ -1672,15 +1703,14 @@ export default function App() {
               </div>
               <span style={{ fontSize: '11px', color: tema.textMuted }}>Ganancia media por camión</span>
             </div>
-
           </div>
 
-          {/* Gráfico Run Chart con Datos en TODAS las líneas */}
+          {/* Gráfico Run Chart con Números en las 3 Curvas */}
           <div style={{ background: tema.cardBg, padding: '20px', borderRadius: '16px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Evolución Financiera Histórica</h3>
-                <p style={{ margin: '3px 0 0', color: tema.textMuted, fontSize: '12px' }}>Comparativo de Facturación vs Costo de Fruta vs Ganancia Real</p>
+                <p style={{ margin: '3px 0 0', color: tema.textMuted, fontSize: '12px' }}>Facturación vs Costo de Fruta vs Ganancia Real</p>
               </div>
 
               <div style={{ display: 'flex', gap: '4px', background: tema.inputBg, padding: '2px', borderRadius: '6px' }}>
@@ -1741,7 +1771,7 @@ export default function App() {
                   {seriesVisibles.costoFruta && <path d={generarPath('costoFruta')} fill="none" stroke="#ef4444" strokeWidth="2" strokeDasharray="4 2" />}
                   {seriesVisibles.margen && <path d={generarPath('margen')} fill="none" stroke="#22c55e" strokeWidth="3" />}
 
-                  {/* PUNTOS Y NÚMEROS EN CADA LÍNEA */}
+                  {/* NÚMEROS Y PUNTOS EN CADA LÍNEA */}
                   {datosGrafico.map((d, i) => {
                     const x = padX + (i / (datosGrafico.length > 1 ? datosGrafico.length - 1 : 1)) * (chartWidth - padX * 2);
                     const yVenta = chartHeight - padY - (d.venta / maxGrafico) * (chartHeight - padY * 2);
@@ -1953,7 +1983,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL: LIQUIDAR BÁSCULA */}
+      {/* MODAL: LIQUIDAR BÁSCULA (COBRO FLETE INNOVATIVE: $32.000) */}
       {modalLiquidarPedido && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
@@ -1967,8 +1997,8 @@ export default function App() {
                 <span>Cajas:</span> <b>{modalLiquidarPedido.cajas} cajas</b>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Costo Edison (25 Kg/cja):</span>
-                <b style={{ color: '#ef4444' }}>{formatoCOP(Number(modalLiquidarPedido.cajas) * 25 * modalLiquidarPedido.precio_compra_kg)}</b>
+                <span>Flete a Cobrar a Innovative:</span>
+                <b style={{ color: '#22c55e' }}>$32.000 / caja ({formatoCOP(Number(modalLiquidarPedido.cajas) * 32000)})</b>
               </div>
             </div>
 
@@ -1991,7 +2021,7 @@ export default function App() {
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
                 <button type="button" onClick={() => setModalLiquidarPedido(null)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
-                <button type="submit" style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Crear Despacho</button>
+                <button type="submit" style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Crear Despacho Oficial</button>
               </div>
             </form>
           </div>
@@ -2118,28 +2148,29 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL: CUENTA DE COBRO IMPRIMIBLE */}
+      {/* MODAL: CUENTA DE COBRO IMPRIMIBLE (1 PÁGINA EXACTA) */}
       {modalCuentaCobro && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 150, padding: '16px' }}>
-          <div style={{ background: '#ffffff', color: '#0f172a', width: '100%', maxWidth: '600px', borderRadius: '16px', padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <div id="modal-impresion-contenedor" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 150, padding: '16px' }}>
+          <div id="area-cuenta-cobro" style={{ background: '#ffffff', color: '#0f172a', width: '100%', maxWidth: '580px', borderRadius: '16px', padding: '24px', maxHeight: '92vh', overflowY: 'auto' }}>
+            
+            <div id="botones-modal-cuenta" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button onClick={() => imprimirConNombre(modalCuentaCobro)} style={{ padding: '6px 12px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Printer size={14} /> PDF
+                  <Printer size={14} /> Imprimir / PDF
                 </button>
                 <button onClick={() => enviarWhatsApp(modalCuentaCobro)} style={{ padding: '6px 12px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Send size={14} /> WhatsApp
+                  <Send size={14} /> Enviar a WhatsApp
                 </button>
               </div>
               <button onClick={() => setModalCuentaCobro(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={20} /></button>
             </div>
 
             <div style={{ textAlign: 'center', borderBottom: '2px solid #0f172a', paddingBottom: '12px', marginBottom: '16px' }}>
-              <h2 style={{ margin: 0, fontSize: '18px', textTransform: 'uppercase' }}>CUENTA DE COBRO # {modalCuentaCobro.consecutivo}</h2>
-              <div style={{ fontSize: '12px', color: '#64748b' }}>Fecha: {modalCuentaCobro.fecha_envio}</div>
+              <h2 style={{ margin: 0, fontSize: '18px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>CUENTA DE COBRO # {modalCuentaCobro.consecutivo}</h2>
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginTop: '2px' }}>Fecha: {modalCuentaCobro.fecha_envio}</div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '16px', lineHeight: '1.4' }}>
               <div>
                 <b>Cliente:</b> Innovative Kitchen SAS<br />
                 <span>NIT # 901.069.237-4</span>
@@ -2165,7 +2196,7 @@ export default function App() {
                   <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>{formatoCOP(modalCuentaCobro.total_venta_fruta)}</td>
                 </tr>
                 <tr style={{ borderBottom: '1px solid #0f172a' }}>
-                  <td style={{ padding: '8px' }}>Envío Transporte ({modalCuentaCobro.cajas} cajas)</td>
+                  <td style={{ padding: '8px' }}>Envío Transporte ({modalCuentaCobro.cajas} cajas @ $32.000)</td>
                   <td style={{ padding: '8px', textAlign: 'center' }}>{modalCuentaCobro.cajas} cjs</td>
                   <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>{formatoCOP(modalCuentaCobro.total_flete)}</td>
                 </tr>
@@ -2177,13 +2208,13 @@ export default function App() {
             </table>
 
             <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', fontSize: '12px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
-              <div>Bancolombia Ahorros: <b>554 879 253 72</b></div>
-              <div>Titular: <b>Elkin Bohórquez Tarud</b> (CC 72.271.189)</div>
+              <div>Forma de Pago: <b>Bancolombia Ahorros # 554 879 253 72</b></div>
+              <div>A nombre de: <b>Elkin Bohórquez Tarud</b> (CC 72.271.189)</div>
             </div>
 
             <div style={{ marginTop: '16px', fontSize: '12px' }}>
-              <img src="/firma.png" alt="Firma" style={{ maxHeight: '50px', maxWidth: '180px', mixBlendMode: 'multiply' }} />
-              <div style={{ width: '180px', borderTop: '1px solid #334155', paddingTop: '4px' }}>
+              <img src="/firma.png" alt="Firma" style={{ maxHeight: '48px', maxWidth: '170px', mixBlendMode: 'multiply' }} />
+              <div style={{ width: '170px', borderTop: '1px solid #334155', paddingTop: '4px' }}>
                 <b>Elkin Bohórquez Tarud</b>
               </div>
             </div>
