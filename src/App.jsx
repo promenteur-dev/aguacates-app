@@ -4,11 +4,10 @@ import {
   PlusCircle, Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
   BarChart3, ListFilter, Search, Filter, DollarSign, CheckCircle2, 
   ArrowUpRight, Truck, Check, Edit2, FileText, Printer, Send, CheckSquare, Square,
-  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Lock, ShieldCheck, Scale
+  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Scale
 } from 'lucide-react';
 
 export default function App() {
-  // Autenticación Biometría / PIN
   const [autenticado, setAutenticado] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [errorBiometria, setErrorBiometria] = useState('');
@@ -32,22 +31,20 @@ export default function App() {
   const [modalHistorialAbonos, setModalHistorialAbonos] = useState(null);
   const [modalCuentaCobro, setModalCuentaCobro] = useState(null);
 
-  // Checkboxes tabla
   const [seleccionadosTabla, setSeleccionadosTabla] = useState([]);
 
-  // Estados Abono Individual Cliente
+  // Estados Abonos
   const [envioSeleccionado, setEnvioSeleccionado] = useState(null);
   const [montoAbono, setMontoAbono] = useState('');
   const [fechaAbono, setFechaAbono] = useState(new Date().toISOString().split('T')[0]);
 
-  // Estados Abono Múltiple Cliente
   const [cuentasSeleccionadasModal, setCuentasSeleccionadasModal] = useState([]);
   const [fechaAbonoMultiple, setFechaAbonoMultiple] = useState(new Date().toISOString().split('T')[0]);
   const [notasAbonoMultiple, setNotasAbonoMultiple] = useState('');
   const [montoRealRecibido, setMontoRealRecibido] = useState('');
   const [esDescuentoDefinitivo, setEsDescuentoDefinitivo] = useState(true);
 
-  // Formulario Liquidar Pedido -> Despacho
+  // Formularios
   const [formLiquidar, setFormLiquidar] = useState({
     consecutivo: '',
     fecha_envio: new Date().toISOString().split('T')[0],
@@ -55,7 +52,6 @@ export default function App() {
     notas: ''
   });
 
-  // Formulario Nuevo Pedido (DEFAULT COMPRA 6000)
   const [formPedido, setFormPedido] = useState({
     fecha_pedido: new Date().toISOString().split('T')[0],
     cajas: '',
@@ -65,7 +61,6 @@ export default function App() {
     notas: ''
   });
 
-  // Formulario Edición Despacho
   const [formEdicion, setFormEdicion] = useState({
     id: '',
     consecutivo: '',
@@ -78,25 +73,24 @@ export default function App() {
     notas: ''
   });
 
-  // Estados Pago Proveedor
   const [provSeleccionadoId, setProvSeleccionadoId] = useState('');
   const [despachosProvSeleccionados, setDespachosProvSeleccionados] = useState([]);
   const [fechaPagoProv, setFechaPagoProv] = useState(new Date().toISOString().split('T')[0]);
   const [notasPagoProv, setNotasPagoProv] = useState('');
 
   const [darkMode, setDarkMode] = useState(true);
-  const [pestanaActiva, setPestanaActiva] = useState('tabla');
+  const [pestanaActiva, setPestanaActiva] = useState('registros'); // 'registros' o 'dashboard'
 
   // Filtros
   const [filtroTexto, setFiltroTexto] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('todos');
   const [filtroMes, setFiltroMes] = useState('todos');
 
-  // Ordenamiento interactivo
+  // Ordenamiento
   const [columnaOrden, setColumnaOrden] = useState('consecutivo');
   const [direccionOrden, setDireccionOrden] = useState('desc');
 
-  // Run Chart
+  // Gráfico
   const [agrupacionRunChart, setAgrupacionRunChart] = useState('mes');
   const [seriesVisibles, setSeriesVisibles] = useState({
     venta: true,
@@ -121,14 +115,12 @@ export default function App() {
     notas: ''
   });
 
-  // Verificar si ya se desbloqueó en la sesión
   useEffect(() => {
     const sesionValida = sessionStorage.getItem('aguacates_auth');
     if (sesionValida === 'true') {
       setAutenticado(true);
       cargarDatos();
     } else {
-      // Intentar biometría automática si está disponible
       intentarBiometria();
     }
   }, []);
@@ -139,21 +131,18 @@ export default function App() {
       if (window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
         const disponible = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
         if (disponible) {
-          // Si el sensor está disponible, simulamos el challenge de WebAuthn
           sessionStorage.setItem('aguacates_auth', 'true');
           setAutenticado(true);
           cargarDatos();
-          return;
         }
       }
     } catch (err) {
-      console.log('Biometría no soportada o cancelada:', err);
+      console.log('Biometría cancelada o no disponible:', err);
     }
   }
 
   function desbloquearConPin(e) {
     e.preventDefault();
-    // PIN de respaldo directo
     if (pinInput === '7227' || pinInput === '0000') {
       sessionStorage.setItem('aguacates_auth', 'true');
       setAutenticado(true);
@@ -305,7 +294,6 @@ export default function App() {
     }, 400);
   }
 
-  // FLUJO PEDIDOS
   function abrirModalCrearPedido() {
     setFormPedido({
       fecha_pedido: new Date().toISOString().split('T')[0],
@@ -701,7 +689,6 @@ export default function App() {
     return Array.from(meses).sort().reverse();
   }, [envios]);
 
-  // COMBINACIÓN: PEDIDOS PENDIENTES CON CONSECUTIVO RESERVADO
   const pedidosPendientesConConsecutivo = useMemo(() => {
     const pedidosActivos = pedidos.filter(p => p.estado === 'pendiente');
     let baseNum = envios.length > 0 
@@ -762,32 +749,19 @@ export default function App() {
   const totalCajas = enviosParaMetricas.reduce((acc, r) => acc + Number(r.cajas || 0), 0);
   const promedioMargenDespacho = enviosParaMetricas.length > 0 ? (margenTotal / enviosParaMetricas.length) : 0;
 
-  // CÁLCULOS DE MERMA Y DEDUCCIONES
   const metricaMerma = useMemo(() => {
     const kilosTeoricosEdison = enviosParaMetricas.reduce((acc, e) => acc + (Number(e.cajas || 0) * 25), 0);
     const kilosRealesBascula = enviosParaMetricas.reduce((acc, e) => acc + Number(e.kilos || 0), 0);
     const kilosDiferencia = kilosTeoricosEdison - kilosRealesBascula;
     const porcentajeMerma = kilosTeoricosEdison > 0 ? ((kilosDiferencia / kilosTeoricosEdison) * 100) : 0;
 
-    // Deducciones absorbidas en abonos (diferencia entre lo facturado y lo pagado con descuento definitivo)
-    const totalDeducciones = abonosCliente
-      .filter(a => a.notas && a.notas.includes('merma/baja'))
-      .reduce((acc, a) => {
-        const coincidencia = a.notas.match(/\$([0-9.]+)/);
-        if (coincidencia && coincidencia[1]) {
-          return acc + Number(coincidencia[1].replace(/\./g, ''));
-        }
-        return acc;
-      }, 0);
-
     return {
       kilosTeoricosEdison,
       kilosRealesBascula,
       kilosDiferencia,
-      porcentajeMerma,
-      totalDeducciones
+      porcentajeMerma
     };
-  }, [enviosParaMetricas, abonosCliente]);
+  }, [enviosParaMetricas]);
 
   const abonosDelEnvioModal = useMemo(() => {
     if (!modalHistorialAbonos) return [];
@@ -843,10 +817,10 @@ export default function App() {
     return Object.values(mapa).sort((a,b) => a.claveSort?.localeCompare(b.claveSort));
   }, [enviosFiltrados, agrupacionRunChart]);
 
-  const chartWidth = 920;
-  const chartHeight = 320;
-  const padX = 60;
-  const padY = 40;
+  const chartWidth = 720;
+  const chartHeight = 260;
+  const padX = 40;
+  const padY = 30;
 
   const maxGrafico = useMemo(() => {
     let max = 100000;
@@ -903,29 +877,29 @@ export default function App() {
   const montoRecibidoNum = Number(montoRealRecibido || totalSeleccionadoAbonoMultiple);
   const diferenciaDescuento = Math.max(0, totalSeleccionadoAbonoMultiple - montoRecibidoNum);
 
-  // PANTALLA DE BLOQUEO BIOMÉTRICO / PIN
+  // PANTALLA DE BLOQUEO BIOMÉTRICO
   if (!autenticado) {
     return (
-      <div style={{ minHeight: '100vh', background: '#090d16', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-        <div style={{ background: '#131b2e', border: '1px solid #1e293b', borderRadius: '24px', padding: '36px 28px', maxWidth: '380px', width: '100%', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)' }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>🥑</div>
-          <h2 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 6px' }}>Aguacates & Tesorería</h2>
-          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 24px' }}>Acceso seguro biométrico</p>
+      <div style={{ minHeight: '100vh', background: '#090d16', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+        <div style={{ background: '#131b2e', border: '1px solid #1e293b', borderRadius: '24px', padding: '32px 20px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)' }}>
+          <div style={{ fontSize: '44px', marginBottom: '8px' }}>🥑</div>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 4px' }}>Aguacates & Tesorería</h2>
+          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 20px' }}>Acceso seguro biométrico</p>
 
           <button
             onClick={intentarBiometria}
-            style={{ width: '100%', padding: '14px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer', marginBottom: '20px', boxShadow: '0 4px 14px rgba(22, 163, 74, 0.35)' }}
+            style={{ width: '100%', padding: '14px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', marginBottom: '16px' }}
           >
             <Fingerprint size={22} /> Desbloquear con Huella
           </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '20px 0', color: '#64748b', fontSize: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '16px 0', color: '#64748b', fontSize: '11px' }}>
             <div style={{ flex: 1, height: '1px', background: '#1e293b' }}></div>
             <span>O DIGITA TU PIN</span>
             <div style={{ flex: 1, height: '1px', background: '#1e293b' }}></div>
           </div>
 
-          <form onSubmit={desbloquearConPin} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <form onSubmit={desbloquearConPin} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <input
               type="password"
               inputMode="numeric"
@@ -935,9 +909,9 @@ export default function App() {
               autoFocus
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value)}
-              style={{ width: '100%', padding: '14px', textAlign: 'center', letterSpacing: '8px', fontSize: '20px', fontWeight: 'bold', background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', color: '#fff', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '12px', textAlign: 'center', letterSpacing: '8px', fontSize: '20px', fontWeight: 'bold', background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', color: '#fff', boxSizing: 'border-box' }}
             />
-            {errorBiometria && <span style={{ color: '#ef4444', fontSize: '12px' }}>{errorBiometria}</span>}
+            {errorBiometria && <span style={{ color: '#ef4444', fontSize: '11px' }}>{errorBiometria}</span>}
             <button
               type="submit"
               style={{ width: '100%', padding: '12px', background: '#38bdf8', color: '#090d16', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
@@ -951,163 +925,153 @@ export default function App() {
   }
 
   return (
-    <div style={{ padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '1280px', margin: '0 auto', background: tema.bg, color: tema.textMain, minHeight: '100vh', transition: 'all 0.2s ease' }}>
+    <div style={{ padding: '12px', fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '1280px', margin: '0 auto', background: tema.bg, color: tema.textMain, minHeight: '100vh', boxSizing: 'border-box' }}>
       
-      {/* Header Adaptativo */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
+      {/* CSS RESPONSIVE INYECTADO (TARJETAS EN MÓVIL / TABLA EN PC) */}
+      <style>{`
+        .vista-pc { display: block; }
+        .vista-movil { display: none; }
+        .grid-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+        .botones-header { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        @media (max-width: 768px) {
+          .vista-pc { display: none !important; }
+          .vista-movil { display: flex !important; flex-direction: column; gap: 10px; }
+          .grid-kpis { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+          .kpi-card { padding: 12px !important; border-radius: 12px !important; }
+          .kpi-val { fontSize: 17px !important; }
+          .botones-header { width: 100% !important; display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+          .btn-header-full { grid-column: span 2 !important; }
+        }
+      `}</style>
+
+      {/* HEADER ADAPTATIVO */}
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '26px' }}>🥑</span>
-            <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800' }}>Aguacates & Tesorería</h1>
+            <div>
+              <h1 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>Aguacates & Tesorería</h1>
+              <p style={{ margin: '1px 0 0', color: tema.textMuted, fontSize: '11px' }}>Edison • Innovative • Macareo</p>
+            </div>
           </div>
-          <p style={{ margin: '2px 0 0 34px', color: tema.textMuted, fontSize: '12px' }}>Liquidación de cuentas, fruta Edison y fletes</p>
+
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button onClick={() => setDarkMode(!darkMode)} style={{ width: '36px', height: '36px', background: tema.cardBg, border: `1px solid ${tema.border}`, borderRadius: '8px', color: tema.textMain, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {darkMode ? <Sun size={15} color="#eab308" /> : <Moon size={15} color="#64748b" />}
+            </button>
+            <button onClick={cargarDatos} style={{ width: '36px', height: '36px', background: tema.cardBg, border: `1px solid ${tema.border}`, borderRadius: '8px', color: tema.textMain, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <RefreshCw size={15} />
+            </button>
+            <button onClick={exportarCSV} title="Exportar CSV" style={{ width: '36px', height: '36px', background: tema.cardBg, border: `1px solid ${tema.border}`, borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Download size={15} />
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', width: '100%', justifyContent: 'flex-start' }}>
-          <button onClick={() => setDarkMode(!darkMode)} title="Cambiar tema" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', background: tema.cardBg, border: `1px solid ${tema.border}`, borderRadius: '10px', color: tema.textMain, cursor: 'pointer' }}>
-            {darkMode ? <Sun size={16} color="#eab308" /> : <Moon size={16} color="#64748b" />}
-          </button>
-
-          <button onClick={cargarDatos} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', background: tema.cardBg, border: `1px solid ${tema.border}`, borderRadius: '10px', color: tema.textMain, cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
-            <RefreshCw size={14} /> Refrescar
-          </button>
-
-          <button 
-            onClick={exportarCSV}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', background: tema.cardBg, border: `1px solid ${tema.border}`, borderRadius: '10px', color: '#38bdf8', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
-          >
-            <Download size={14} /> CSV
-          </button>
-
+        {/* BOTONERA ACCIONES */}
+        <div className="botones-header">
           <button 
             onClick={abrirModalCrearPedido}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', background: '#eab308', color: '#090d16', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}
+            style={{ padding: '11px', background: '#eab308', color: '#090d16', border: 'none', borderRadius: '10px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
           >
-            <Clock size={16} /> + Pedido
+            <Clock size={16} /> + Pedido (Cajas)
           </button>
 
           <button 
             onClick={abrirModalAbonoMultiple} 
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}
+            style={{ padding: '11px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
           >
-            <CheckSquare size={16} /> + Abono
+            <CheckSquare size={16} /> + Abono Cliente
           </button>
 
           <button 
             onClick={abrirModalPagoProveedor} 
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}
+            className="btn-header-full"
+            style={{ padding: '11px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
           >
-            <ArrowUpRight size={16} /> Pagar Prov
+            <ArrowUpRight size={16} /> Pagar Proveedor (Edison / Macareo)
           </button>
         </div>
       </div>
 
-      {/* TARJETAS KPI (INCLUYE CONTROL DE MERMAS) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+      {/* TARJETAS KPI (GRID RESPONSIVE) */}
+      <div className="grid-kpis" style={{ marginBottom: '16px' }}>
         <div 
+          className="kpi-card"
           onClick={() => setFiltroEstado(filtroEstado === 'pendientes' ? 'todos' : 'pendientes')}
-          style={{ background: tema.cardBg, padding: '16px', borderRadius: '14px', border: `1px solid ${filtroEstado === 'pendientes' ? '#f97316' : tema.border}`, cursor: 'pointer' }}
+          style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${filtroEstado === 'pendientes' ? '#f97316' : tema.border}`, cursor: 'pointer' }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '11px', fontWeight: '800' }}>
-            <span>POR COBRAR (INNOVATIVE)</span>
-            <AlertCircle size={15} color="#f97316" />
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
+            <span>POR COBRAR</span>
+            <AlertCircle size={14} color="#f97316" />
           </div>
-          <div style={{ fontSize: '20px', fontWeight: '800', color: '#f97316', marginTop: '6px' }}>{formatoCOP(totalPorCobrar)}</div>
-          <div style={{ fontSize: '11px', color: tema.textMuted, marginTop: '4px' }}>
-            {enviosConDeudaCliente > 0 ? `⚠️ ${enviosConDeudaCliente} pendientes` : '✅ Cartera al día'}
-          </div>
-        </div>
-
-        <div style={{ background: tema.cardBg, padding: '16px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '11px', fontWeight: '800' }}>
-            <span>DEBO A EDISON (FRUTA)</span>
-            <ArrowUpRight size={15} color="#ef4444" />
-          </div>
-          <div style={{ fontSize: '20px', fontWeight: '800', color: '#ef4444', marginTop: '6px' }}>{formatoCOP(deudaEdison)}</div>
-          <div style={{ fontSize: '11px', color: tema.textMuted, marginTop: '4px' }}>
-            {deudaEdison > 0 ? `${despachosPendientesParaProveedor.length} por liquidar` : '✅ Fruta 100% paga'}
+          <div className="kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: '#f97316', marginTop: '4px' }}>{formatoCOP(totalPorCobrar)}</div>
+          <div style={{ fontSize: '10px', color: tema.textMuted, marginTop: '2px' }}>
+            {enviosConDeudaCliente > 0 ? `⚠️ ${enviosConDeudaCliente} pend.` : '✅ Al día'}
           </div>
         </div>
 
-        <div style={{ background: tema.cardBg, padding: '16px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '11px', fontWeight: '800' }}>
-            <span>DEBO A MACAREO (FLETES)</span>
-            <Truck size={15} color="#22c55e" />
+        <div className="kpi-card" style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
+            <span>DEBO A EDISON</span>
+            <ArrowUpRight size={14} color="#ef4444" />
           </div>
-          <div style={{ fontSize: '20px', fontWeight: '800', color: deudaMacareo === 0 ? '#22c55e' : '#eab308', marginTop: '6px' }}>
-            {formatoCOP(deudaMacareo)}
-          </div>
-          <div style={{ fontSize: '11px', color: '#22c55e', marginTop: '4px', fontWeight: '600' }}>
-            ✅ Fletes al día ($0)
+          <div className="kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: '#ef4444', marginTop: '4px' }}>{formatoCOP(deudaEdison)}</div>
+          <div style={{ fontSize: '10px', color: tema.textMuted, marginTop: '2px' }}>
+            {deudaEdison > 0 ? `${despachosPendientesParaProveedor.length} por liquidar` : '✅ Fruta paga'}
           </div>
         </div>
 
-        {/* TARJETA KPI: ANÁLISIS DE MERMA Y DEDUCCIONES */}
-        <div style={{ background: tema.cardBg, padding: '16px', borderRadius: '14px', border: '1px solid rgba(234, 179, 8, 0.4)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#eab308', fontSize: '11px', fontWeight: '800' }}>
-            <span>MERMA / RENDIMIENTO</span>
-            <Scale size={15} color="#eab308" />
+        <div className="kpi-card" style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
+            <span>MARGEN BRUTO</span>
+            <TrendingUp size={14} color="#22c55e" />
           </div>
-          <div style={{ fontSize: '20px', fontWeight: '800', color: metricaMerma.kilosDiferencia > 0 ? '#f97316' : '#22c55e', marginTop: '6px' }}>
+          <div className="kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: '#22c55e', marginTop: '4px' }}>{formatoCOP(margenTotal)}</div>
+          <div style={{ fontSize: '10px', color: tema.textMuted, marginTop: '2px' }}>
+            Prom: {formatoCOP(promedioMargenDespacho)}/env
+          </div>
+        </div>
+
+        <div className="kpi-card" style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: '1px solid rgba(234, 179, 8, 0.4)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#eab308', fontSize: '10px', fontWeight: '800' }}>
+            <span>MERMA / BÁSCULA</span>
+            <Scale size={14} color="#eab308" />
+          </div>
+          <div className="kpi-val" style={{ fontSize: '20px', fontWeight: '800', color: metricaMerma.kilosDiferencia > 0 ? '#f97316' : '#22c55e', marginTop: '4px' }}>
             {metricaMerma.kilosDiferencia > 0 ? `-${metricaMerma.kilosDiferencia.toFixed(1)} Kg` : `+${Math.abs(metricaMerma.kilosDiferencia).toFixed(1)} Kg`}
           </div>
-          <div style={{ fontSize: '11px', color: tema.textMuted, marginTop: '4px' }}>
-            {metricaMerma.kilosDiferencia > 0 
-              ? `Merma del ${metricaMerma.porcentajeMerma.toFixed(1)}% vs 25Kg teóricos`
-              : '✅ Edison cubrió la merma con fruta extra'
-            }
-          </div>
-        </div>
-
-        <div style={{ background: tema.cardBg, padding: '16px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '11px', fontWeight: '800' }}>
-            <span>MARGEN BRUTO</span>
-            <TrendingUp size={15} color="#22c55e" />
-          </div>
-          <div style={{ fontSize: '20px', fontWeight: '800', color: '#22c55e', marginTop: '6px' }}>{formatoCOP(margenTotal)}</div>
-          <div style={{ fontSize: '11px', color: tema.textMuted, marginTop: '4px' }}>
-            Prom: {formatoCOP(promedioMargenDespacho)} / envío
-          </div>
-        </div>
-
-        <div style={{ background: tema.cardBg, padding: '16px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '11px', fontWeight: '800' }}>
-            <span>FRUTA DESPACHADA</span>
-            <Package size={15} color="#38bdf8" />
-          </div>
-          <div style={{ fontSize: '20px', fontWeight: '800', color: tema.textMain, marginTop: '6px' }}>
-            {Number(totalKilos).toFixed(1)} Kg
-          </div>
-          <div style={{ fontSize: '11px', color: tema.textMuted, marginTop: '4px' }}>
-            En {totalCajas} cajas ({enviosParaMetricas.length} despachos)
+          <div style={{ fontSize: '10px', color: tema.textMuted, marginTop: '2px' }}>
+            {metricaMerma.kilosDiferencia > 0 ? `${metricaMerma.porcentajeMerma.toFixed(1)}% vs 25Kg teór.` : '✅ Cubierto por Edison'}
           </div>
         </div>
       </div>
 
-      {/* BARRA DE FILTROS */}
-      <div style={{ background: tema.cardBg, padding: '12px 14px', borderRadius: '12px', border: `1px solid ${tema.border}`, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', minWidth: '150px', flex: '1' }}>
-          <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: tema.textMuted }} />
+      {/* BARRA DE FILTROS COMPACTA */}
+      <div style={{ background: tema.cardBg, padding: '10px', borderRadius: '12px', border: `1px solid ${tema.border}`, marginBottom: '14px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: '1', minWidth: '130px' }}>
+          <Search size={13} style={{ position: 'absolute', left: '8px', top: '9px', color: tema.textMuted }} />
           <input 
             type="text" 
             placeholder="Buscar # o fecha..." 
             value={filtroTexto} 
             onChange={(e) => setFiltroTexto(e.target.value)} 
-            style={{ width: '100%', padding: '7px 10px 7px 30px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '6px 8px 6px 26px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '6px', fontSize: '12px', boxSizing: 'border-box' }}
           />
         </div>
 
         <div style={{ display: 'flex', gap: '4px' }}>
-          <button onClick={() => setFiltroEstado('todos')} style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', background: filtroEstado === 'todos' ? '#38bdf8' : tema.inputBg, color: filtroEstado === 'todos' ? '#090d16' : tema.textMuted, border: `1px solid ${tema.border}` }}>Todos</button>
-          <button onClick={() => setFiltroEstado('pendientes')} style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', background: filtroEstado === 'pendientes' ? '#f97316' : tema.inputBg, color: filtroEstado === 'pendientes' ? '#090d16' : tema.textMuted, border: `1px solid ${tema.border}` }}>Pendientes</button>
-          <button onClick={() => setFiltroEstado('saldados')} style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', background: filtroEstado === 'saldados' ? '#22c55e' : tema.inputBg, color: filtroEstado === 'saldados' ? '#090d16' : tema.textMuted, border: `1px solid ${tema.border}` }}>Saldados</button>
+          <button onClick={() => setFiltroEstado('todos')} style={{ padding: '6px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', background: filtroEstado === 'todos' ? '#38bdf8' : tema.inputBg, color: filtroEstado === 'todos' ? '#090d16' : tema.textMuted, border: `1px solid ${tema.border}` }}>Todos</button>
+          <button onClick={() => setFiltroEstado('pendientes')} style={{ padding: '6px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', background: filtroEstado === 'pendientes' ? '#f97316' : tema.inputBg, color: filtroEstado === 'pendientes' ? '#090d16' : tema.textMuted, border: `1px solid ${tema.border}` }}>Pendientes</button>
+          <button onClick={() => setFiltroEstado('saldados')} style={{ padding: '6px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', background: filtroEstado === 'saldados' ? '#22c55e' : tema.inputBg, color: filtroEstado === 'saldados' ? '#090d16' : tema.textMuted, border: `1px solid ${tema.border}` }}>Saldados</button>
         </div>
 
         {mesesDisponibles.length > 0 && (
           <select 
             value={filtroMes} 
             onChange={(e) => setFiltroMes(e.target.value)} 
-            style={{ padding: '6px 10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
+            style={{ padding: '6px 8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
           >
             <option value="todos">Meses</option>
             {mesesDisponibles.map(m => (
@@ -1117,140 +1081,269 @@ export default function App() {
         )}
       </div>
 
-      {/* Pestañas de Vista */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', borderBottom: `1px solid ${tema.border}`, paddingBottom: '6px' }}>
-        <button onClick={() => setPestanaActiva('tabla')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: pestanaActiva === 'tabla' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'tabla' ? tema.border : 'transparent'}`, borderRadius: '8px', color: pestanaActiva === 'tabla' ? '#38bdf8' : tema.textMuted, fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}>
-          <ListFilter size={15} /> Registros ({enviosFiltrados.length})
+      {/* PESTAÑAS */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', borderBottom: `1px solid ${tema.border}`, paddingBottom: '6px' }}>
+        <button onClick={() => setPestanaActiva('registros')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: pestanaActiva === 'registros' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'registros' ? tema.border : 'transparent'}`, borderRadius: '6px', color: pestanaActiva === 'registros' ? '#38bdf8' : tema.textMuted, fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}>
+          <ListFilter size={14} /> Registros ({enviosFiltrados.length})
         </button>
 
-        <button onClick={() => setPestanaActiva('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: pestanaActiva === 'dashboard' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'dashboard' ? tema.border : 'transparent'}`, borderRadius: '8px', color: pestanaActiva === 'dashboard' ? '#38bdf8' : tema.textMuted, fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}>
-          <BarChart3 size={15} /> Gráfica
+        <button onClick={() => setPestanaActiva('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: pestanaActiva === 'dashboard' ? tema.cardBg : 'transparent', border: `1px solid ${pestanaActiva === 'dashboard' ? tema.border : 'transparent'}`, borderRadius: '6px', color: pestanaActiva === 'dashboard' ? '#38bdf8' : tema.textMuted, fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}>
+          <BarChart3 size={14} /> Gráfico
         </button>
       </div>
 
-      {/* VISTA TABLA UNIFICADA */}
-      {pestanaActiva === 'tabla' && (
-        <div style={{ background: tema.cardBg, borderRadius: '14px', border: `1px solid ${tema.border}`, overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', minWidth: '700px' }}>
-            <thead>
-              <tr style={{ background: tema.thBg, borderBottom: `1px solid ${tema.border}`, color: tema.textMuted }}>
-                <th style={{ padding: '12px 8px', width: '32px', textAlign: 'center' }}>
-                  <div onClick={() => toggleSeleccionarTodoTabla(enviosFiltrados.map(e => e.id))} style={{ cursor: 'pointer' }}>
-                    {seleccionadosTabla.length > 0 && seleccionadosTabla.length === enviosFiltrados.length ? <CheckSquare size={16} color="#38bdf8" /> : <Square size={16} color={tema.textMuted} />}
-                  </div>
-                </th>
-                <th onClick={() => handleOrdenar('consecutivo')} style={{ padding: '12px', cursor: 'pointer' }}>#</th>
-                <th onClick={() => handleOrdenar('fecha_envio')} style={{ padding: '12px', cursor: 'pointer' }}>Fecha</th>
-                <th onClick={() => handleOrdenar('cajas')} style={{ padding: '12px', cursor: 'pointer' }}>Cajas</th>
-                <th onClick={() => handleOrdenar('kilos')} style={{ padding: '12px', cursor: 'pointer' }}>Kilos</th>
-                <th onClick={() => handleOrdenar('precio_compra_kg')} style={{ padding: '12px', cursor: 'pointer' }}>Compra/Kg</th>
-                <th onClick={() => handleOrdenar('total_facturado_cliente')} style={{ padding: '12px', cursor: 'pointer' }}>Facturado</th>
-                <th onClick={() => handleOrdenar('saldo_pendiente')} style={{ padding: '12px', cursor: 'pointer' }}>Saldo</th>
-                <th onClick={() => handleOrdenar('margen_bruto')} style={{ padding: '12px', cursor: 'pointer' }}>Margen</th>
-                <th style={{ padding: '12px', textAlign: 'center' }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* PEDIDOS EN TRÁNSITO */}
-              {pedidosPendientesConConsecutivo.map((p) => (
-                <tr key={p.id} style={{ borderBottom: `1px solid ${tema.rowBorder}`, background: 'rgba(234, 179, 8, 0.08)', borderLeft: '3px solid #eab308' }}>
-                  <td style={{ padding: '12px 8px', textAlign: 'center' }}>
-                    <Clock size={15} color="#eab308" />
-                  </td>
-                  <td style={{ padding: '12px', fontWeight: 'bold', color: '#eab308' }}>
-                    #{p.consecutivo}
-                    <div style={{ fontSize: '9px', textTransform: 'uppercase' }}>PEDIDO</div>
-                  </td>
-                  <td style={{ padding: '12px', color: tema.textMuted }}>{p.fecha_pedido}</td>
-                  <td style={{ padding: '12px', fontWeight: 'bold' }}>{p.cajas} cjs</td>
-                  <td style={{ padding: '12px' }}>
-                    <span style={{ padding: '3px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308' }}>
-                      ⏳ Por pesar
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px', color: '#ef4444', fontWeight: 'bold' }}>{formatoCOP(p.precio_compra_kg)}</td>
-                  <td style={{ padding: '12px', color: tema.textMuted }}>Báscula pend.</td>
-                  <td style={{ padding: '12px', color: '#eab308', fontWeight: 'bold' }}>Por cobrar</td>
-                  <td style={{ padding: '12px', color: tema.textMuted }}>-</td>
-                  <td style={{ padding: '12px', textAlign: 'center' }}>
-                    <div style={{ display: 'inline-flex', gap: '4px' }}>
-                      <button
-                        onClick={() => iniciarLiquidacionPedido(p)}
-                        style={{ padding: '6px 10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                      >
-                        <CheckCheck size={13} /> Pesar
-                      </button>
-                      <button onClick={() => cancelarPedido(p.id)} style={{ padding: '6px 8px', background: 'transparent', border: `1px solid ${tema.border}`, color: '#ef4444', borderRadius: '6px', cursor: 'pointer' }}>
-                        <Trash2 size={13} />
-                      </button>
+      {/* VISTA 1: REGISTROS */}
+      {pestanaActiva === 'registros' && (
+        <>
+          {/* ==================== A) VISTA MÓVIL (TARJETAS NATIVAS) ==================== */}
+          <div className="vista-movil">
+            {/* PEDIDOS PENDIENTES */}
+            {pedidosPendientesConConsecutivo.map((p) => (
+              <div 
+                key={p.id}
+                style={{
+                  background: tema.cardBg,
+                  borderRadius: '14px',
+                  padding: '14px',
+                  border: '1px solid rgba(234, 179, 8, 0.4)',
+                  borderLeft: '4px solid #eab308'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontWeight: '900', fontSize: '16px', color: '#eab308' }}>#{p.consecutivo}</span>
+                      <span style={{ padding: '2px 6px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', borderRadius: '4px', fontSize: '10px', fontWeight: '800' }}>PEDIDO</span>
                     </div>
-                  </td>
-                </tr>
-              ))}
+                    <div style={{ fontSize: '11px', color: tema.textMuted, marginTop: '2px' }}>Fecha: {p.fecha_pedido}</div>
+                  </div>
 
-              {/* DESPACHOS FACTURADOS */}
-              {loading ? (
-                <tr><td colSpan="10" style={{ padding: '24px', textAlign: 'center', color: tema.textMuted }}>Cargando datos...</td></tr>
-              ) : (
-                enviosFiltrados.map((r) => {
+                  <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308' }}>
+                    ⏳ Por pesar
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>
+                  <div>
+                    <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{p.cajas} cajas</b>
+                  </div>
+                  <div>
+                    <span style={{ color: tema.textMuted }}>Compra Edison:</span> <b style={{ color: '#ef4444' }}>{formatoCOP(p.precio_compra_kg)}/Kg</b>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => iniciarLiquidacionPedido(p)}
+                    style={{ flex: 1, padding: '10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  >
+                    <CheckCheck size={16} /> Recibir báscula
+                  </button>
+                  <button
+                    onClick={() => cancelarPedido(p.id)}
+                    style={{ padding: '10px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: '#ef4444', borderRadius: '8px', cursor: 'pointer' }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {/* DESPACHOS FACTURADOS */}
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '24px', color: tema.textMuted }}>Cargando registros...</div>
+            ) : enviosFiltrados.length === 0 && pedidosPendientesConConsecutivo.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px', color: tema.textMuted }}>No hay registros.</div>
+            ) : (
+              enviosFiltrados.map((r) => {
+                const saldo = Number(r.saldo_pendiente || 0);
+
+                return (
+                  <div
+                    key={r.id}
+                    style={{
+                      background: tema.cardBg,
+                      borderRadius: '14px',
+                      padding: '14px',
+                      border: `1px solid ${saldo > 0 ? 'rgba(249, 115, 22, 0.4)' : tema.border}`,
+                      borderLeft: `4px solid ${saldo > 0 ? '#f97316' : '#22c55e'}`
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div>
+                        <div style={{ fontWeight: '900', fontSize: '16px' }}>#{r.consecutivo}</div>
+                        <div style={{ fontSize: '11px', color: tema.textMuted, marginTop: '2px' }}>{r.fecha_envio}</div>
+                      </div>
+
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: '800', fontSize: '15px', color: saldo > 0 ? '#f97316' : '#22c55e' }}>
+                          {saldo > 0 ? formatoCOP(saldo) : '✅ Pagado'}
+                        </div>
+                        <div style={{ fontSize: '10px', color: tema.textMuted }}>{saldo > 0 ? 'Saldo pendiente' : 'Saldado'}</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '8px 10px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>
+                      <div>
+                        <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{r.cajas}</b> | <span style={{ color: tema.textMuted }}>Kilos:</span> <b>{r.kilos} Kg</b>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ color: tema.textMuted }}>Margen:</span> <b style={{ color: '#38bdf8' }}>{formatoCOP(r.margen_bruto)}</b>
+                      </div>
+                    </div>
+
+                    {/* Botonera de acciones grandes para celular */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr auto', gap: '6px' }}>
+                      <button
+                        onClick={() => abrirModalEditarDespacho(r)}
+                        style={{ padding: '8px 10px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Edit2 size={14} color="#38bdf8" />
+                      </button>
+
+                      <button
+                        onClick={() => setModalCuentaCobro(r)}
+                        style={{ padding: '8px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                      >
+                        <FileText size={14} /> Cuenta
+                      </button>
+
+                      <button
+                        onClick={() => enviarWhatsApp(r)}
+                        style={{ padding: '8px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                      >
+                        <Send size={14} /> WhatsApp
+                      </button>
+
+                      {saldo > 0 ? (
+                        <button
+                          onClick={() => abrirModalAbono(r)}
+                          style={{ padding: '8px 12px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <DollarSign size={14} /> Abono
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => abrirModalHistorial(r)}
+                          style={{ padding: '8px 10px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <CheckCircle2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* ==================== B) VISTA PC (TABLA TRADICIONAL) ==================== */}
+          <div className="vista-pc" style={{ background: tema.cardBg, borderRadius: '14px', border: `1px solid ${tema.border}`, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: tema.thBg, borderBottom: `1px solid ${tema.border}`, color: tema.textMuted }}>
+                  <th style={{ padding: '12px 14px', width: '36px', textAlign: 'center' }}>
+                    <div onClick={() => toggleSeleccionarTodoTabla(enviosFiltrados.map(e => e.id))} style={{ cursor: 'pointer' }}>
+                      {seleccionadosTabla.length > 0 && seleccionadosTabla.length === enviosFiltrados.length ? <CheckSquare size={16} color="#38bdf8" /> : <Square size={16} color={tema.textMuted} />}
+                    </div>
+                  </th>
+                  <th onClick={() => handleOrdenar('consecutivo')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Consecutivo</th>
+                  <th onClick={() => handleOrdenar('fecha_envio')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Fecha</th>
+                  <th onClick={() => handleOrdenar('cajas')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Cajas</th>
+                  <th onClick={() => handleOrdenar('kilos')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Kilos</th>
+                  <th onClick={() => handleOrdenar('precio_compra_kg')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Compra Edison</th>
+                  <th onClick={() => handleOrdenar('total_facturado_cliente')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Facturado</th>
+                  <th onClick={() => handleOrdenar('saldo_pendiente')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Saldo Cliente</th>
+                  <th onClick={() => handleOrdenar('margen_bruto')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Margen</th>
+                  <th style={{ padding: '12px 14px', textAlign: 'center' }}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Pedidos */}
+                {pedidosPendientesConConsecutivo.map((p) => (
+                  <tr key={p.id} style={{ borderBottom: `1px solid ${tema.rowBorder}`, background: 'rgba(234, 179, 8, 0.08)', borderLeft: '3px solid #eab308' }}>
+                    <td style={{ padding: '12px 14px', textAlign: 'center' }}><Clock size={16} color="#eab308" /></td>
+                    <td style={{ padding: '12px 14px', fontWeight: 'bold', color: '#eab308' }}>#{p.consecutivo} <span style={{ fontSize: '10px' }}>(PEDIDO)</span></td>
+                    <td style={{ padding: '12px 14px', color: tema.textMuted }}>{p.fecha_pedido}</td>
+                    <td style={{ padding: '12px 14px', fontWeight: 'bold' }}>{p.cajas} cajas</td>
+                    <td style={{ padding: '12px 14px' }}><span style={{ padding: '3px 6px', borderRadius: '4px', fontSize: '11px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', fontWeight: 'bold' }}>⏳ Por pesar</span></td>
+                    <td style={{ padding: '12px 14px', color: '#ef4444', fontWeight: 'bold' }}>{formatoCOP(p.precio_compra_kg)}</td>
+                    <td style={{ padding: '12px 14px', color: tema.textMuted }}>Báscula pendiente</td>
+                    <td style={{ padding: '12px 14px', color: '#eab308', fontWeight: 'bold' }}>Por cobrar</td>
+                    <td style={{ padding: '12px 14px', color: tema.textMuted }}>-</td>
+                    <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                      <div style={{ display: 'inline-flex', gap: '6px' }}>
+                        <button onClick={() => iniciarLiquidacionPedido(p)} style={{ padding: '6px 12px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCheck size={14} /> Recibir báscula
+                        </button>
+                        <button onClick={() => cancelarPedido(p.id)} style={{ padding: '6px 8px', background: 'transparent', border: `1px solid ${tema.border}`, color: '#ef4444', borderRadius: '6px', cursor: 'pointer' }}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {/* Despachos */}
+                {enviosFiltrados.map((r) => {
                   const saldo = Number(r.saldo_pendiente || 0);
                   const estaSeleccionado = seleccionadosTabla.includes(r.id);
 
                   return (
                     <tr key={r.id} style={{ borderBottom: `1px solid ${tema.rowBorder}`, background: estaSeleccionado ? 'rgba(56, 189, 248, 0.08)' : 'transparent' }}>
-                      <td style={{ padding: '12px 8px', textAlign: 'center' }}>
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                         <div onClick={() => toggleSeleccionFila(r.id)} style={{ cursor: 'pointer' }}>
                           {estaSeleccionado ? <CheckSquare size={16} color="#38bdf8" /> : <Square size={16} color={tema.textMuted} />}
                         </div>
                       </td>
-                      <td style={{ padding: '12px', fontWeight: '700' }}>#{r.consecutivo}</td>
-                      <td style={{ padding: '12px', color: tema.textMuted }}>{r.fecha_envio}</td>
-                      <td style={{ padding: '12px' }}>{r.cajas}</td>
-                      <td style={{ padding: '12px' }}>{r.kilos} Kg</td>
-                      <td style={{ padding: '12px' }}>
+                      <td style={{ padding: '12px 14px', fontWeight: 'bold' }}>#{r.consecutivo}</td>
+                      <td style={{ padding: '12px 14px', color: tema.textMuted }}>{r.fecha_envio}</td>
+                      <td style={{ padding: '12px 14px' }}>{r.cajas}</td>
+                      <td style={{ padding: '12px 14px' }}>{r.kilos} Kg</td>
+                      <td style={{ padding: '12px 14px' }}>
                         <button onClick={() => setModalEditarPrecioCompra(r)} style={{ background: 'transparent', border: 'none', color: '#ef4444', fontWeight: 'bold', cursor: 'pointer', padding: 0 }}>
-                          {formatoCOP(r.precio_compra_kg)} <Edit2 size={10} color={tema.textMuted} />
+                          {formatoCOP(r.precio_compra_kg)} <Edit2 size={11} color={tema.textMuted} />
                         </button>
                       </td>
-                      <td style={{ padding: '12px', fontWeight: '600' }}>{formatoCOP(r.total_facturado_cliente)}</td>
-                      <td style={{ padding: '12px', fontWeight: '700', color: saldo > 0 ? '#f97316' : '#22c55e' }}>{formatoCOP(saldo)}</td>
-                      <td style={{ padding: '12px', color: '#38bdf8', fontWeight: '600' }}>{formatoCOP(r.margen_bruto)}</td>
-                      <td style={{ padding: '12px', textAlign: 'center' }}>
-                        <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
-                          <button onClick={() => abrirModalEditarDespacho(r)} style={{ padding: '5px 7px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '6px', cursor: 'pointer' }}>
+                      <td style={{ padding: '12px 14px', fontWeight: '600' }}>{formatoCOP(r.total_facturado_cliente)}</td>
+                      <td style={{ padding: '12px 14px', fontWeight: 'bold', color: saldo > 0 ? '#f97316' : '#22c55e' }}>{formatoCOP(saldo)}</td>
+                      <td style={{ padding: '12px 14px', color: '#38bdf8', fontWeight: '600' }}>{formatoCOP(r.margen_bruto)}</td>
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', gap: '6px' }}>
+                          <button onClick={() => abrirModalEditarDespacho(r)} style={{ padding: '6px 8px', background: tema.inputBg, border: `1px solid ${tema.border}`, borderRadius: '6px', cursor: 'pointer' }}>
                             <Edit2 size={12} color="#38bdf8" />
                           </button>
-                          <button onClick={() => setModalCuentaCobro(r)} style={{ padding: '5px 8px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
-                            <FileText size={12} />
+                          <button onClick={() => setModalCuentaCobro(r)} style={{ padding: '6px 10px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+                            <FileText size={13} /> Cuenta
                           </button>
-                          <button onClick={() => enviarWhatsApp(r)} style={{ padding: '5px 8px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
-                            <Send size={12} />
+                          <button onClick={() => enviarWhatsApp(r)} style={{ padding: '6px 10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+                            <Send size={13} /> WhatsApp
                           </button>
                           {saldo > 0 ? (
-                            <button onClick={() => abrirModalAbono(r)} style={{ padding: '5px 8px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
-                              <DollarSign size={12} />
+                            <button onClick={() => abrirModalAbono(r)} style={{ padding: '6px 10px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+                              <DollarSign size={13} /> Abono
                             </button>
                           ) : (
-                            <button onClick={() => abrirModalHistorial(r)} style={{ color: '#22c55e', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', borderRadius: '6px', padding: '4px 6px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
-                              <CheckCircle2 size={12} />
+                            <button onClick={() => abrirModalHistorial(r)} style={{ padding: '5px 8px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+                              <CheckCircle2 size={13} /> Pagado
                             </button>
                           )}
                         </div>
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
-      {/* VISTA RUN CHART */}
+      {/* VISTA 2: GRÁFICO RUN CHART */}
       {pestanaActiva === 'dashboard' && (
         <div style={{ background: tema.cardBg, padding: '16px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700' }}>Run Chart Multivariable</h3>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700' }}>Run Chart de Rendimiento</h3>
             <div style={{ display: 'flex', gap: '4px', background: tema.inputBg, padding: '2px', borderRadius: '6px' }}>
               {['envio', 'semana', 'mes', 'ano'].map(modo => (
                 <button
@@ -1274,7 +1367,7 @@ export default function App() {
           </div>
 
           <div style={{ overflowX: 'auto' }}>
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ width: '100%', height: 'auto', minWidth: '600px' }}>
+            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ width: '100%', height: 'auto', minWidth: '550px' }}>
               <line x1={padX} y1={chartHeight - padY} x2={chartWidth - padX} y2={chartHeight - padY} stroke={tema.chartGrid} />
               {seriesVisibles.venta && <path d={generarPath('venta')} fill="none" stroke="#3b82f6" strokeWidth="2" />}
               {seriesVisibles.margen && <path d={generarPath('margen')} fill="none" stroke="#22c55e" strokeWidth="2.5" />}
@@ -1295,24 +1388,26 @@ export default function App() {
         </div>
       )}
 
+      {/* ==================== MODALES ==================== */}
+
       {/* MODAL: NUEVO PEDIDO */}
       {modalNuevoPedido && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 110, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '24px', borderRadius: '16px', width: '100%', maxWidth: '440px', border: `1px solid ${tema.border}` }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '800' }}>Nuevo Pedido Solicitado</h3>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Nuevo Pedido Solicitado</h3>
               <button onClick={() => setModalNuevoPedido(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
             </div>
 
             <form onSubmit={guardarNuevoPedido} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
-                  <label style={{ fontSize: '11px', fontWeight: '600', color: tema.textMuted }}>Fecha Pedido</label>
+                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Fecha Pedido</label>
                   <input type="date" required value={formPedido.fecha_pedido} onChange={(e) => setFormPedido({...formPedido, fecha_pedido: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: '11px', fontWeight: '700', color: '#eab308' }}>Número de Cajas *</label>
-                  <input type="number" step="any" required placeholder="0" autoFocus value={formPedido.cajas} onChange={(e) => setFormPedido({...formPedido, cajas: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#eab308', fontSize: '15px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+                  <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#eab308' }}>Número de Cajas *</label>
+                  <input type="number" step="any" required placeholder="0" autoFocus value={formPedido.cajas} onChange={(e) => setFormPedido({...formPedido, cajas: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#eab308', fontSize: '16px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
                 </div>
               </div>
 
@@ -1354,15 +1449,15 @@ export default function App() {
       {/* MODAL: LIQUIDAR BÁSCULA */}
       {modalLiquidarPedido && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '24px', borderRadius: '16px', width: '100%', maxWidth: '440px', border: `1px solid ${tema.border}` }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '800' }}>Confirmar Pesaje Báscula</h3>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Confirmar Báscula Innovative</h3>
               <button onClick={() => setModalLiquidarPedido(null)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
             </div>
 
-            <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', border: `1px solid ${tema.border}`, marginBottom: '14px', fontSize: '12px' }}>
+            <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', border: `1px solid ${tema.border}`, marginBottom: '12px', fontSize: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                <span>Cajas Despachadas:</span><b>{modalLiquidarPedido.cajas} cajas</b>
+                <span>Cajas:</span> <b>{modalLiquidarPedido.cajas} cajas</b>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Costo Edison (25 Kg/cja):</span>
@@ -1383,7 +1478,7 @@ export default function App() {
               </div>
 
               <div>
-                <label style={{ fontSize: '11px', fontWeight: '700', color: '#22c55e' }}>Kilos Netos Cantados por Innovative *</label>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#22c55e' }}>Kilos Netos Cantados por Innovative *</label>
                 <input type="number" step="any" required placeholder="Ej: 148.50" autoFocus value={formLiquidar.kilos} onChange={(e) => setFormLiquidar({...formLiquidar, kilos: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: '1px solid #22c55e', color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
               </div>
 
@@ -1396,12 +1491,12 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL: ABONO CLIENTE */}
+      {/* MODAL: ABONO CLIENTE INDIVIDUAL */}
       {modalAbonoAbierto && envioSeleccionado && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 110, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '24px', borderRadius: '16px', width: '100%', maxWidth: '400px', border: `1px solid ${tema.border}` }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '380px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>Registrar Pago #{envioSeleccionado.consecutivo}</h3>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700' }}>Registrar Pago #{envioSeleccionado.consecutivo}</h3>
               <button onClick={() => setModalAbonoAbierto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
             </div>
 
@@ -1419,12 +1514,12 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL: ABONO MÚLTIPLE */}
+      {/* MODAL: ABONO CLIENTE MÚLTIPLE */}
       {modalAbonoMultipleAbierto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '24px', borderRadius: '16px', width: '100%', maxWidth: '500px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '480px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '800' }}>Pago Conjunto Innovative</h3>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Pago Conjunto Innovative</h3>
               <button onClick={() => setModalAbonoMultipleAbierto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
             </div>
 
@@ -1474,9 +1569,9 @@ export default function App() {
       {/* MODAL: PAGAR PROVEEDOR */}
       {modalPagoProvAbierto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '24px', borderRadius: '16px', width: '100%', maxWidth: '500px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '480px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '800' }}>Pago a Proveedor</h3>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Pago a Proveedor</h3>
               <button onClick={() => setModalPagoProvAbierto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
             </div>
 
@@ -1519,9 +1614,9 @@ export default function App() {
       {/* MODAL: CUENTA DE COBRO IMPRIMIBLE */}
       {modalCuentaCobro && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 150, padding: '16px' }}>
-          <div style={{ background: '#ffffff', color: '#0f172a', width: '100%', maxWidth: '640px', borderRadius: '16px', padding: '28px', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: '#ffffff', color: '#0f172a', width: '100%', maxWidth: '600px', borderRadius: '16px', padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '6px' }}>
                 <button onClick={() => imprimirConNombre(modalCuentaCobro)} style={{ padding: '6px 12px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Printer size={14} /> PDF
                 </button>
@@ -1612,7 +1707,7 @@ export default function App() {
       {/* MODAL: EDITAR DESPACHO */}
       {modalEditarDespachoCompleto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '24px', borderRadius: '16px', width: '100%', maxWidth: '440px', border: `1px solid ${tema.border}` }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Editar Despacho #{formEdicion.consecutivo}</h3>
               <button onClick={() => setModalEditarDespachoCompleto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
