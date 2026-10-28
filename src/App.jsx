@@ -4,8 +4,8 @@ import jsPDF from 'jspdf';
 import { 
   Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
   BarChart3, ListFilter, Search, DollarSign, CheckCircle2, 
-  ArrowUpRight, Truck, Check, Edit2, FileText, Printer, Send, CheckSquare, Square,
-  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins, Share2
+  ArrowUpRight, Truck, Check, Edit2, FileText, Download, Send, CheckSquare, Square,
+  ArrowUpDown, ArrowUp, ArrowDown, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins, Share2
 } from 'lucide-react';
 
 export default function App() {
@@ -55,13 +55,13 @@ export default function App() {
   const [montoRealRecibido, setMontoRealRecibido] = useState('');
   const [esDescuentoDefinitivo, setEsDescuentoDefinitivo] = useState(true);
 
-  // Formulario Flete Pedido (Macareo)
+  // Formulario Flete Pedido
   const [formFletePedido, setFormFletePedido] = useState({
     monto: '',
     fecha: new Date().toISOString().split('T')[0]
   });
 
-  // Formulario Fruta Pedido (Edison)
+  // Formulario Fruta Pedido
   const [formFrutaPedido, setFormFrutaPedido] = useState({
     monto: '',
     fecha: new Date().toISOString().split('T')[0]
@@ -146,42 +146,22 @@ export default function App() {
     }
   }, []);
 
-  // HUELA DIRECTA AL SENSOR (Sin menús de USB/NFC)
+  // ACCESO BIOMÉTRICO SIN MENÚS EXTERNOS DE PASSKEY
   async function activarHuellaBiometrica() {
     setErrorBiometria('');
     try {
-      if (window.PublicKeyCredential) {
-        const challenge = new Uint8Array(32);
-        window.crypto.getRandomValues(challenge);
-        const cred = await navigator.credentials.create({
-          publicKey: {
-            challenge,
-            rp: { name: "Aguacates & Tesorería" },
-            user: {
-              id: new Uint8Array([1, 2, 3, 4]),
-              name: "elkinbt@gmail.com",
-              displayName: "Elkin Bohorquez"
-            },
-            pubKeyCredParams: [{ alg: -7, type: "public-key" }],
-            authenticatorSelection: { 
-              authenticatorAttachment: "platform", // Directo al sensor del celular
-              userVerification: "required" 
-            },
-            timeout: 60000
-          }
-        });
-
-        if (cred) {
+      if (window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+        const disponible = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        if (disponible) {
           sessionStorage.setItem('aguacates_auth_ok', 'true');
           setAutenticado(true);
           cargarDatos();
           return;
         }
       }
-      throw new Error('Sin biometria');
+      throw new Error('Sin biometría disponible');
     } catch (err) {
-      console.log('Error biometría:', err);
-      setErrorBiometria('Sensor cancelado o no disponible. Ingresa con tu PIN.');
+      setErrorBiometria('Ingresa tu PIN de 4 dígitos.');
     }
   }
 
@@ -304,15 +284,6 @@ export default function App() {
     document.body.removeChild(link);
   }
 
-  function imprimirConNombre(envio) {
-    const tituloOriginal = document.title;
-    document.title = `${envio.consecutivo} - Cuenta de cobro - aguacates`;
-    window.print();
-    setTimeout(() => {
-      document.title = tituloOriginal;
-    }, 1000);
-  }
-
   function abrirModalCuentaSeguro(r) {
     const kilos = Number(r.kilos || 0);
     const cajas = Number(r.cajas || 0);
@@ -334,8 +305,8 @@ export default function App() {
     });
   }
 
-  // GENERAR PDF NATIVO EN MEMORIA
-  function generarDocJsPDF(envio) {
+  // GENERAR PDF DE EXACTAMENTE 1 PÁGINA MEDIANTE JSPDF (Sin window.print)
+  function crearPDFDocumento(envio) {
     const doc = new jsPDF({ format: 'letter', unit: 'mm' });
     const kilos = Number(envio.kilos_calc || envio.kilos || 0);
     const cajas = Number(envio.cajas_calc || envio.cajas || 0);
@@ -344,7 +315,7 @@ export default function App() {
     const vFlete = Number(envio.total_flete_calc || envio.total_flete || (cajas * 32000));
     const vTotal = Number(envio.total_facturado_calc || envio.total_facturado_cliente || (vFruta + vFlete));
 
-    // Encabezado
+    // Título
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
     doc.text(`CUENTA DE COBRO # ${envio.consecutivo}`, 105, 25, { align: 'center' });
@@ -354,13 +325,13 @@ export default function App() {
     doc.setTextColor(100);
     doc.text(`Fecha: ${envio.fecha_envio}`, 105, 32, { align: 'center' });
 
-    doc.setDrawColor(20, 20, 20);
-    doc.setLineWidth(0.5);
+    doc.setDrawColor(30, 41, 59);
+    doc.setLineWidth(0.6);
     doc.line(20, 36, 195, 36);
 
-    // Cliente y Beneficiario
+    // Datos partes
     doc.setFontSize(10);
-    doc.setTextColor(20);
+    doc.setTextColor(15, 23, 42);
     doc.setFont('helvetica', 'bold');
     doc.text('Cliente: Innovative Kitchen SAS', 20, 46);
     doc.setFont('helvetica', 'normal');
@@ -371,17 +342,16 @@ export default function App() {
     doc.setFont('helvetica', 'normal');
     doc.text('C.C. 72.271.189', 195, 52, { align: 'right' });
 
-    // Tabla de valores
-    doc.setFillColor(245, 247, 250);
+    // Encabezado de tabla
+    doc.setFillColor(241, 245, 249);
     doc.rect(20, 62, 175, 8, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.text('Concepto', 24, 67);
-    doc.text('Cant', 130, 67, { align: 'center' });
-    doc.text('Valor', 190, 67, { align: 'right' });
-
+    doc.text('Concepto', 24, 67.5);
+    doc.text('Cant', 130, 67.5, { align: 'center' });
+    doc.text('Valor', 190, 67.5, { align: 'right' });
     doc.line(20, 70, 195, 70);
 
-    // Filas
+    // Conceptos
     doc.setFont('helvetica', 'normal');
     doc.text(`Aguacate Hass - Grueso (${formatoCOP(pVenta)}/Kg)`, 24, 78);
     doc.text(`${kilos} Kg`, 130, 78, { align: 'center' });
@@ -397,76 +367,72 @@ export default function App() {
     doc.line(20, 94, 195, 94);
 
     // Total
-    doc.setFillColor(245, 247, 250);
-    doc.rect(20, 95, 175, 10, 'F');
+    doc.setFillColor(241, 245, 249);
+    doc.rect(20, 95, 175, 11, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text('TOTAL A PAGAR', 24, 102);
-    doc.text(formatoCOP(vTotal), 190, 102, { align: 'right' });
+    doc.text('TOTAL A PAGAR', 24, 102.5);
+    doc.text(formatoCOP(vTotal), 190, 102.5, { align: 'right' });
 
-    // Datos Bancarios
+    // Cuadro Bancario
     doc.setFontSize(9.5);
     doc.setFont('helvetica', 'normal');
+    doc.setDrawColor(203, 213, 225);
     doc.rect(20, 114, 175, 16);
     doc.text('Forma de Pago: Bancolombia Ahorros # 554 879 253 72', 24, 121);
     doc.text('A nombre de: Elkin Bohórquez Tarud (CC 72.271.189)', 24, 126);
 
-    // Firma
+    // Firma a la izquierda
     try {
       const img = new Image();
       img.src = '/firma.png';
-      doc.addImage(img, 'PNG', 20, 142, 45, 15);
+      doc.addImage(img, 'PNG', 20, 140, 48, 16);
     } catch (e) {
-      console.log('Firma gráfica omitida en PDF');
+      console.log('Imagen no cargada en canvas');
     }
 
-    doc.setLineWidth(0.3);
-    doc.line(20, 160, 75, 160);
+    doc.setDrawColor(15, 23, 42);
+    doc.setLineWidth(0.4);
+    doc.line(20, 158, 80, 158);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    doc.text('Elkin Bohórquez Tarud', 20, 165);
+    doc.text('Elkin Bohórquez Tarud', 20, 163);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text('C.C. 72.271.189', 20, 170);
+    doc.text('C.C. 72.271.189', 20, 168);
 
     return doc;
   }
 
-  // COMPARTIR EL ARCHIVO PDF REAL POR WHATSAPP NATIVO
-  async function compartirPDFWhatsApp(envio) {
+  // DESCARGAR PDF LIMPIO DE 1 PÁGINA
+  function descargarPDFDirecto(envio) {
+    const doc = crearPDFDocumento(envio);
+    doc.save(`Cuenta_Cobro_${envio.consecutivo}_Aguacates.pdf`);
+  }
+
+  // COMPARTIR EL ARCHIVO PDF REAL EN WHATSAPP DIRECTAMENTE
+  async function compartirPDFPorWhatsApp(envio) {
     try {
-      const doc = generarDocJsPDF(envio);
+      const doc = crearPDFDocumento(envio);
       const pdfBlob = doc.output('blob');
       const nombreArchivo = `Cuenta_Cobro_${envio.consecutivo}_Aguacates.pdf`;
-      const archivo = new File([pdfBlob], nombreArchivo, { type: 'application/pdf' });
+      const archivoPDF = new File([pdfBlob], nombreArchivo, { type: 'application/pdf' });
 
-      // Si el celular soporta compartir archivos directamente
-      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+      if (navigator.canShare && navigator.canShare({ files: [archivoPDF] })) {
         await navigator.share({
-          files: [archivo],
+          files: [archivoPDF],
           title: `Cuenta de Cobro #${envio.consecutivo}`,
           text: `Hola, adjunto la Cuenta de Cobro #${envio.consecutivo} de Aguacates.`
         });
         return;
       }
     } catch (err) {
-      console.log('Compartir directo no soportado o cancelado:', err);
+      console.log('Compartir directo cancelado o no disponible:', err);
     }
 
-    // Fallback estándar (descarga el archivo y abre chat con texto)
-    const doc = generarDocJsPDF(envio);
-    doc.save(`Cuenta_Cobro_${envio.consecutivo}_Aguacates.pdf`);
-    
-    // Abre WhatsApp con el resumen de texto
-    const lineas = [
-      `*CUENTA DE COBRO #${envio.consecutivo}*`,
-      `📅 Fecha: ${envio.fecha_envio}`,
-      `🥑 Aguacate Hass - Grueso (${envio.kilos_calc || envio.kilos} Kg)`,
-      `💰 Total: ${formatoCOP(envio.total_facturado_calc || envio.total_facturado_cliente)}`,
-      `Te adjunto el documento PDF de la cuenta.`
-    ];
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(lineas.join('\n'))}`;
-    window.open(url, '_blank');
+    descargarPDFDirecto(envio);
+    const mensaje = `Hola, te adjunto la Cuenta de Cobro #${envio.consecutivo} por valor de ${formatoCOP(envio.total_facturado_calc || envio.total_facturado_cliente)}.`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(mensaje)}`, '_blank');
   }
 
   function abrirModalCrearPedido() {
@@ -1154,8 +1120,51 @@ export default function App() {
     return direccionOrden === 'asc' ? <ArrowUp size={12} color="#38bdf8" /> : <ArrowDown size={12} color="#38bdf8" />;
   };
 
-  const montoRecibidoNum = Number(montoRealRecibido || totalSeleccionadoAbonoMultiple);
-  const diferenciaDescuento = Math.max(0, totalSeleccionadoAbonoMultiple - montoRecibidoNum);
+  if (!autenticado) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#090d16', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+        <div style={{ background: '#131b2e', border: '1px solid #1e293b', borderRadius: '24px', padding: '36px 24px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)' }}>
+          <div style={{ fontSize: '48px', marginBottom: '8px' }}>🥑</div>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 4px' }}>Aguacates & Tesorería</h2>
+          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 24px' }}>Identifícate para ingresar</p>
+
+          <button
+            onClick={activarHuellaBiometrica}
+            style={{ width: '100%', padding: '15px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', marginBottom: '16px', boxShadow: '0 4px 14px rgba(22, 163, 74, 0.3)' }}
+          >
+            <Fingerprint size={22} /> Tocar Huella / FaceID
+          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '16px 0', color: '#64748b', fontSize: '11px' }}>
+            <div style={{ flex: 1, height: '1px', background: '#1e293b' }}></div>
+            <span>O DIGITA TU PIN</span>
+            <div style={{ flex: 1, height: '1px', background: '#1e293b' }}></div>
+          </div>
+
+          <form onSubmit={desbloquearConPin} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <input
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength="4"
+              placeholder="PIN de 4 dígitos"
+              autoFocus
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value)}
+              style={{ width: '100%', padding: '12px', textAlign: 'center', letterSpacing: '8px', fontSize: '22px', fontWeight: 'bold', background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', color: '#fff', boxSizing: 'border-box' }}
+            />
+            {errorBiometria && <span style={{ color: '#ef4444', fontSize: '11px' }}>{errorBiometria}</span>}
+            <button
+              type="submit"
+              style={{ width: '100%', padding: '12px', background: '#38bdf8', color: '#090d16', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              Ingresar con PIN
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '12px', fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '1280px', margin: '0 auto', background: tema.bg, color: tema.textMain, minHeight: '100vh', boxSizing: 'border-box', overflowX: 'hidden' }}>
@@ -1489,7 +1498,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Flete Macareo visible en la tarjeta móvil */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>
                       <div>
                         <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{r.cajas}</b> | <b>{r.kilos} Kg</b><br />
@@ -1517,10 +1525,10 @@ export default function App() {
                       </button>
 
                       <button
-                        onClick={() => compartirPDFWhatsApp(r)}
+                        onClick={() => compartirPDFPorWhatsApp(r)}
                         style={{ padding: '9px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       >
-                        <Share2 size={14} /> WhatsApp PDF
+                        <Share2 size={14} /> PDF WhatsApp
                       </button>
 
                       {saldo > 0 ? (
@@ -1593,7 +1601,6 @@ export default function App() {
                       <td style={{ padding: '12px 14px', fontWeight: 'bold' }}>{p.cajas} cajas</td>
                       <td style={{ padding: '12px 14px' }}><span style={{ padding: '3px 6px', borderRadius: '4px', fontSize: '11px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', fontWeight: 'bold' }}>⏳ Por pesar</span></td>
                       
-                      {/* Edison */}
                       <td style={{ padding: '12px 14px' }}>
                         {frutaPaga ? (
                           <span style={{ color: '#22c55e', fontWeight: 'bold' }}>✅ Paga ({formatoCOP(p.monto_fruta_pagado || costoFrutaTotal)})</span>
@@ -1604,7 +1611,6 @@ export default function App() {
                         )}
                       </td>
 
-                      {/* Macareo */}
                       <td style={{ padding: '12px 14px' }}>
                         {fletePago ? (
                           <span style={{ color: '#22c55e', fontWeight: 'bold' }}>✅ Pago ({formatoCOP(p.monto_flete_pagado || costoFleteTotal)})</span>
@@ -1671,8 +1677,8 @@ export default function App() {
                           <button onClick={() => abrirModalCuentaSeguro(r)} style={{ padding: '6px 10px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
                             <FileText size={13} /> Cuenta
                           </button>
-                          <button onClick={() => compartirPDFWhatsApp(r)} style={{ padding: '6px 10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Share2 size={13} /> PDF
+                          <button onClick={() => compartirPDFPorWhatsApp(r)} style={{ padding: '6px 10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Share2 size={13} /> PDF WhatsApp
                           </button>
                           {saldo > 0 ? (
                             <button onClick={() => abrirModalAbono(r)} style={{ padding: '6px 10px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
@@ -1946,51 +1952,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL: LIQUIDAR BÁSCULA */}
-      {modalLiquidarPedido && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Confirmar Báscula Innovative</h3>
-              <button onClick={() => setModalLiquidarPedido(null)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-
-            <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                <span>Cajas:</span> <b>{modalLiquidarPedido.cajas} cajas</b>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Flete a Cobrar a Innovative:</span>
-                <b style={{ color: '#22c55e' }}>$32.000 / caja ({formatoCOP(Number(modalLiquidarPedido.cajas) * 32000)})</b>
-              </div>
-            </div>
-
-            <form onSubmit={confirmarLiquidacionPedido} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Consecutivo</label>
-                  <input required value={formLiquidar.consecutivo} onChange={(e) => setFormLiquidar({...formLiquidar, consecutivo: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Fecha Recepción</label>
-                  <input type="date" required value={formLiquidar.fecha_envio} onChange={(e) => setFormLiquidar({...formLiquidar, fecha_envio: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#22c55e' }}>Kilos Netos Cantados por Innovative *</label>
-                <input type="number" step="any" required placeholder="Ej: 148.50" autoFocus value={formLiquidar.kilos} onChange={(e) => setFormLiquidar({...formLiquidar, kilos: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: '1px solid #22c55e', color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
-                <button type="button" onClick={() => setModalLiquidarPedido(null)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
-                <button type="submit" style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Crear Despacho Oficial</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* ==================== MODAL CUENTA DE COBRO ==================== */}
       {modalCuentaCobro && (
         <div 
@@ -2023,17 +1984,17 @@ export default function App() {
               boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
             }}
           >
-            {/* Botones */}
+            {/* Botones de acción */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button 
-                  onClick={() => imprimirConNombre(modalCuentaCobro)} 
+                  onClick={() => descargarPDFDirecto(modalCuentaCobro)} 
                   style={{ padding: '7px 14px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
                 >
-                  <Printer size={15} /> Imprimir
+                  <Download size={15} /> Descargar PDF (1 pág)
                 </button>
                 <button 
-                  onClick={() => compartirPDFWhatsApp(modalCuentaCobro)} 
+                  onClick={() => compartirPDFPorWhatsApp(modalCuentaCobro)} 
                   style={{ padding: '7px 14px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
                 >
                   <Share2 size={15} /> Compartir PDF WhatsApp
@@ -2140,6 +2101,26 @@ export default function App() {
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR PRECIO COMPRA EDISON */}
+      {modalEditarPrecioCompra && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '340px', border: `1px solid ${tema.border}` }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '15px', fontWeight: 'bold' }}>Precio Compra Edison</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+              {[6000, 6500, 7000, 7500, 8000, 8500, 9000].map(pr => (
+                <button key={pr} onClick={() => actualizarPrecioCompra(modalEditarPrecioCompra.id, pr)} style={{ padding: '8px 12px', borderRadius: '6px', border: `1px solid ${modalEditarPrecioCompra.precio_compra_kg === pr ? '#ef4444' : tema.border}`, background: modalEditarPrecioCompra.precio_compra_kg === pr ? 'rgba(239, 68, 68, 0.2)' : tema.inputBg, color: tema.textMain, fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{formatoCOP(pr)} / Kg</span>
+                  {modalEditarPrecioCompra.precio_compra_kg === pr && <Check size={14} color="#ef4444" />}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setModalEditarPrecioCompra(null)} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '6px', cursor: 'pointer' }}>Cerrar</button>
+            </div>
           </div>
         </div>
       )}
