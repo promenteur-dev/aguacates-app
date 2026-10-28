@@ -54,7 +54,7 @@ export default function App() {
   const [montoRealRecibido, setMontoRealRecibido] = useState('');
   const [esDescuentoDefinitivo, setEsDescuentoDefinitivo] = useState(true);
 
-  // Formulario Flete Pedido (Costo Macareo: $20.000)
+  // Formulario Flete Pedido (Macareo)
   const [formFletePedido, setFormFletePedido] = useState({
     monto: '',
     fecha: new Date().toISOString().split('T')[0]
@@ -66,7 +66,7 @@ export default function App() {
     fecha: new Date().toISOString().split('T')[0]
   });
 
-  // Formulario Liquidación (Cobro Innovative flete fijo $32.000)
+  // Formulario Liquidación
   const [formLiquidar, setFormLiquidar] = useState({
     consecutivo: '',
     fecha_envio: new Date().toISOString().split('T')[0],
@@ -488,7 +488,6 @@ export default function App() {
     e.preventDefault();
     if (!modalLiquidarPedido || !formLiquidar.kilos || Number(formLiquidar.kilos) <= 0) return;
 
-    // Se guarda con costo_flete_caja = 32000 (lo que paga Innovative)
     const { data: envioCreado, error: errorEnvio } = await supabase.from('envios').insert([{
       consecutivo: formLiquidar.consecutivo,
       fecha_envio: formLiquidar.fecha_envio,
@@ -503,7 +502,6 @@ export default function App() {
     if (!errorEnvio && envioCreado && envioCreado.length > 0) {
       const nuevoId = envioCreado[0].id;
 
-      // Transferir flete Macareo si ya fue pagado
       if (modalLiquidarPedido.flete_pagado) {
         const provMacareo = proveedores.find(p => p.tipo === 'transporte');
         if (provMacareo) {
@@ -518,7 +516,6 @@ export default function App() {
         }
       }
 
-      // Transferir Edison si ya fue pagado
       if (modalLiquidarPedido.fruta_pagada) {
         const provEdison = proveedores.find(p => p.tipo !== 'transporte');
         if (provEdison) {
@@ -724,7 +721,7 @@ export default function App() {
       setSeleccionadosTabla([]);
       await cargarDatos();
     } else {
-      alert('Error: ' + error.message);
+      alert('Error registrando abono múltiple: ' + error.message);
     }
   }
 
@@ -1081,7 +1078,6 @@ export default function App() {
             background-color: #ffffff !important;
             color: #000000 !important;
           }
-          /* Ocultar toda la app en la impresión */
           body > #root > div > *:not(#modal-impresion-contenedor) {
             display: none !important;
           }
@@ -1279,7 +1275,7 @@ export default function App() {
       {/* VISTA 1: REGISTROS */}
       {pestanaActiva === 'registros' && (
         esMovil ? (
-          /* VISTA MÓVIL EN TARJETAS */
+          /* ==================== VISTA MÓVIL EN TARJETAS ==================== */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {pedidosPendientesConConsecutivo.map((p) => {
               const costoFleteTotal = Number(p.cajas || 0) * Number(p.costo_flete_caja || 20000);
@@ -1446,12 +1442,15 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>
+                    {/* Flete Macareo visible en la tarjeta móvil */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>
                       <div>
-                        <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{r.cajas}</b> | <span style={{ color: tema.textMuted }}>Kilos:</span> <b>{r.kilos} Kg</b>
+                        <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{r.cajas}</b> | <b>{r.kilos} Kg</b><br />
+                        <span style={{ color: tema.textMuted }}>Flete Macareo:</span> <b style={{ color: '#22c55e' }}>{formatoCOP(r.total_flete)}</b>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <span style={{ color: tema.textMuted }}>Margen:</span> <b style={{ color: '#38bdf8' }}>{formatoCOP(r.margen_bruto)}</b>
+                        <span style={{ color: tema.textMuted }}>Margen:</span> <b style={{ color: '#38bdf8' }}>{formatoCOP(r.margen_bruto)}</b><br />
+                        <span style={{ color: tema.textMuted }}>Compra:</span> <b>{formatoCOP(r.precio_compra_kg)}/Kg</b>
                       </div>
                     </div>
 
@@ -1499,7 +1498,7 @@ export default function App() {
             )}
           </div>
         ) : (
-          /* VISTA PC EN TABLA */
+          /* ==================== VISTA PC EN TABLA ==================== */
           <div style={{ background: tema.cardBg, borderRadius: '14px', border: `1px solid ${tema.border}`, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
@@ -1929,295 +1928,6 @@ export default function App() {
                 <button type="submit" style={{ padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Confirmar Pago Fruta</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: NUEVO PEDIDO */}
-      {modalNuevoPedido && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 110, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Nuevo Pedido Solicitado</h3>
-              <button onClick={() => setModalNuevoPedido(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-
-            <form onSubmit={guardarNuevoPedido} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Consecutivo</label>
-                  <input required value={formPedido.consecutivo} onChange={(e) => setFormPedido({...formPedido, consecutivo: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Fecha Pedido</label>
-                  <input type="date" required value={formPedido.fecha_pedido} onChange={(e) => setFormPedido({...formPedido, fecha_pedido: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#eab308' }}>Número de Cajas *</label>
-                <input type="number" step="any" required placeholder="0" autoFocus value={formPedido.cajas} onChange={(e) => setFormPedido({...formPedido, cajas: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#eab308', fontSize: '16px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Compra/Kg Edison</label>
-                  <select value={formPedido.precio_compra_kg} onChange={(e) => setFormPedido({...formPedido, precio_compra_kg: Number(e.target.value)})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px' }}>
-                    {PRECIOS_COMPRA.map(p => <option key={p} value={p}>{formatoCOP(p)}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Flete/Caja Macareo</label>
-                  <select value={formPedido.costo_flete_caja} onChange={(e) => setFormPedido({...formPedido, costo_flete_caja: Number(e.target.value)})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px' }}>
-                    {TARIFAS_FLETE.map(t => <option key={t} value={t}>{formatoCOP(t)}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
-                <button type="button" onClick={() => setModalNuevoPedido(false)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
-                <button type="submit" style={{ padding: '8px 16px', background: '#eab308', color: '#090d16', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar Pedido</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: LIQUIDAR BÁSCULA (COBRO FLETE INNOVATIVE: $32.000) */}
-      {modalLiquidarPedido && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Confirmar Báscula Innovative</h3>
-              <button onClick={() => setModalLiquidarPedido(null)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-
-            <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', border: `1px solid ${tema.border}`, marginBottom: '12px', fontSize: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                <span>Cajas:</span> <b>{modalLiquidarPedido.cajas} cajas</b>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Flete a Cobrar a Innovative:</span>
-                <b style={{ color: '#22c55e' }}>$32.000 / caja ({formatoCOP(Number(modalLiquidarPedido.cajas) * 32000)})</b>
-              </div>
-            </div>
-
-            <form onSubmit={confirmarLiquidacionPedido} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Consecutivo</label>
-                  <input required value={formLiquidar.consecutivo} onChange={(e) => setFormLiquidar({...formLiquidar, consecutivo: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Fecha Recepción</label>
-                  <input type="date" required value={formLiquidar.fecha_envio} onChange={(e) => setFormLiquidar({...formLiquidar, fecha_envio: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#22c55e' }}>Kilos Netos Cantados por Innovative *</label>
-                <input type="number" step="any" required placeholder="Ej: 148.50" autoFocus value={formLiquidar.kilos} onChange={(e) => setFormLiquidar({...formLiquidar, kilos: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: '1px solid #22c55e', color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
-                <button type="button" onClick={() => setModalLiquidarPedido(null)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
-                <button type="submit" style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Crear Despacho Oficial</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: ABONO CLIENTE INDIVIDUAL */}
-      {modalAbonoAbierto && envioSeleccionado && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 110, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '380px', border: `1px solid ${tema.border}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700' }}>Registrar Pago #{envioSeleccionado.consecutivo}</h3>
-              <button onClick={() => setModalAbonoAbierto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-
-            <form onSubmit={guardarAbono} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '11px', color: tema.textMuted }}>Monto Recibido (COP)</label>
-                <input type="number" step="any" required autoFocus value={montoAbono} onChange={(e) => setMontoAbono(e.target.value)} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" onClick={() => setModalAbonoAbierto(false)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
-                <button type="submit" style={{ padding: '8px 16px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: ABONO CLIENTE MÚLTIPLE */}
-      {modalAbonoMultipleAbierto && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '480px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Pago Conjunto Innovative</h3>
-              <button onClick={() => setModalAbonoMultipleAbierto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-
-            <form onSubmit={guardarAbonoMultiple} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
-                {despachosPendientesCliente.map(e => {
-                  const seleccionada = cuentasSeleccionadasModal.includes(e.id);
-                  return (
-                    <div key={e.id} onClick={() => toggleSeleccionCuentaModal(e.id)} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', borderRadius: '8px', border: `1px solid ${seleccionada ? '#0284c7' : tema.border}`, background: seleccionada ? 'rgba(2, 132, 199, 0.15)' : tema.inputBg, cursor: 'pointer' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {seleccionada ? <CheckSquare size={16} color="#0284c7" /> : <Square size={16} color={tema.textMuted} />}
-                        <span>#{e.consecutivo} ({e.fecha_envio})</span>
-                      </div>
-                      <b style={{ color: '#f97316' }}>{formatoCOP(e.saldo_pendiente)}</b>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#22c55e' }}>Monto Real Transferido por Innovative:</label>
-                <input type="number" step="any" value={montoRealRecibido} onChange={(e) => setMontoRealRecibido(e.target.value)} placeholder={String(totalSeleccionadoAbonoMultiple)} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${diferenciaDescuento > 0 ? '#f97316' : tema.inputBorder}`, color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
-              </div>
-
-              {diferenciaDescuento > 0 && (
-                <div style={{ background: 'rgba(249, 115, 22, 0.1)', padding: '10px', borderRadius: '8px', border: '1px solid #f97316', fontSize: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f97316', fontWeight: 'bold', marginBottom: '4px' }}>
-                    <span>Diferencia por bajas / merma:</span>
-                    <span>-{formatoCOP(diferenciaDescuento)}</span>
-                  </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={esDescuentoDefinitivo} onChange={(e) => setEsDescuentoDefinitivo(e.target.checked)} />
-                    <span>Absorber diferencia y saldar cuentas a $0</span>
-                  </label>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
-                <button type="button" onClick={() => setModalAbonoMultipleAbierto(false)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
-                <button type="submit" disabled={cuentasSeleccionadasModal.length === 0} style={{ padding: '8px 16px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Registrar Pago</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: PAGAR PROVEEDOR */}
-      {modalPagoProvAbierto && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '480px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Pago a Proveedor</h3>
-              <button onClick={() => setModalPagoProvAbierto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-
-            <form onSubmit={guardarPagoProveedorMultiple} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <select value={provSeleccionadoId} onChange={(e) => { setProvSeleccionadoId(e.target.value); setDespachosProvSeleccionados([]); }} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', fontWeight: 'bold' }}>
-                {proveedores.map(p => (
-                  <option key={p.id} value={p.id}>{p.nombre} ({p.tipo === 'transporte' ? 'Fletes Macareo' : 'Fruta Edison'})</option>
-                ))}
-              </select>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
-                {despachosPendientesParaProveedor.map(e => {
-                  const sel = despachosProvSeleccionados.includes(e.id);
-                  return (
-                    <div key={e.id} onClick={() => toggleSeleccionDespachoProv(e.id)} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', borderRadius: '8px', border: `1px solid ${sel ? '#dc2626' : tema.border}`, background: sel ? 'rgba(220, 38, 38, 0.15)' : tema.inputBg, cursor: 'pointer' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {sel ? <CheckSquare size={16} color="#dc2626" /> : <Square size={16} color={tema.textMuted} />}
-                        <span>#{e.consecutivo} ({e.fecha_envio})</span>
-                      </div>
-                      <b style={{ color: '#ef4444' }}>{formatoCOP(e.saldoPendienteProv)}</b>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', background: darkMode ? '#0b1120' : '#f8fafc', borderRadius: '8px', border: `1px solid ${tema.border}` }}>
-                <span>Total a Transferir:</span>
-                <b style={{ color: '#ef4444', fontSize: '18px' }}>{formatoCOP(totalSeleccionadoPagoProv)}</b>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" onClick={() => setModalPagoProvAbierto(false)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
-                <button type="submit" disabled={despachosProvSeleccionados.length === 0} style={{ padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Pagar Proveedor</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: CUENTA DE COBRO IMPRIMIBLE (1 PÁGINA EXACTA) */}
-      {modalCuentaCobro && (
-        <div id="modal-impresion-contenedor" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 150, padding: '16px' }}>
-          <div id="area-cuenta-cobro" style={{ background: '#ffffff', color: '#0f172a', width: '100%', maxWidth: '580px', borderRadius: '16px', padding: '24px', maxHeight: '92vh', overflowY: 'auto' }}>
-            
-            <div id="botones-modal-cuenta" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button onClick={() => imprimirConNombre(modalCuentaCobro)} style={{ padding: '6px 12px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Printer size={14} /> Imprimir / PDF
-                </button>
-                <button onClick={() => enviarWhatsApp(modalCuentaCobro)} style={{ padding: '6px 12px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Send size={14} /> Enviar a WhatsApp
-                </button>
-              </div>
-              <button onClick={() => setModalCuentaCobro(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={20} /></button>
-            </div>
-
-            <div style={{ textAlign: 'center', borderBottom: '2px solid #0f172a', paddingBottom: '12px', marginBottom: '16px' }}>
-              <h2 style={{ margin: 0, fontSize: '18px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>CUENTA DE COBRO # {modalCuentaCobro.consecutivo}</h2>
-              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginTop: '2px' }}>Fecha: {modalCuentaCobro.fecha_envio}</div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '16px', lineHeight: '1.4' }}>
-              <div>
-                <b>Cliente:</b> Innovative Kitchen SAS<br />
-                <span>NIT # 901.069.237-4</span>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <b>Beneficiario:</b> Elkin Bohórquez Tarud<br />
-                <span>C.C. 72.271.189</span>
-              </div>
-            </div>
-
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', marginBottom: '16px' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderTop: '1px solid #0f172a', borderBottom: '1px solid #0f172a' }}>
-                  <th style={{ padding: '8px', textAlign: 'left' }}>Concepto</th>
-                  <th style={{ padding: '8px', textAlign: 'center' }}>Cant</th>
-                  <th style={{ padding: '8px', textAlign: 'right' }}>Valor</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '8px' }}>Aguacate Hass - Grueso ({formatoCOP(modalCuentaCobro.precio_venta_kg)}/Kg)</td>
-                  <td style={{ padding: '8px', textAlign: 'center' }}>{modalCuentaCobro.kilos} Kg</td>
-                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>{formatoCOP(modalCuentaCobro.total_venta_fruta)}</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid #0f172a' }}>
-                  <td style={{ padding: '8px' }}>Envío Transporte ({modalCuentaCobro.cajas} cajas @ $32.000)</td>
-                  <td style={{ padding: '8px', textAlign: 'center' }}>{modalCuentaCobro.cajas} cjs</td>
-                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>{formatoCOP(modalCuentaCobro.total_flete)}</td>
-                </tr>
-                <tr style={{ background: '#f8fafc' }}>
-                  <td colSpan="2" style={{ padding: '10px 8px', fontWeight: 'bold' }}>TOTAL A PAGAR</td>
-                  <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: '900', fontSize: '15px' }}>{formatoCOP(modalCuentaCobro.total_facturado_cliente)}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', fontSize: '12px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
-              <div>Forma de Pago: <b>Bancolombia Ahorros # 554 879 253 72</b></div>
-              <div>A nombre de: <b>Elkin Bohórquez Tarud</b> (CC 72.271.189)</div>
-            </div>
-
-            <div style={{ marginTop: '16px', fontSize: '12px' }}>
-              <img src="/firma.png" alt="Firma" style={{ maxHeight: '48px', maxWidth: '170px', mixBlendMode: 'multiply' }} />
-              <div style={{ width: '170px', borderTop: '1px solid #334155', paddingTop: '4px' }}>
-                <b>Elkin Bohórquez Tarud</b>
-              </div>
-            </div>
           </div>
         </div>
       )}
