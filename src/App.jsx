@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabase';
+import jsPDF from 'jspdf';
 import { 
   Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
   BarChart3, ListFilter, Search, DollarSign, CheckCircle2, 
   ArrowUpRight, Truck, Check, Edit2, FileText, Printer, Send, CheckSquare, Square,
-  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins
+  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins, Share2
 } from 'lucide-react';
 
 export default function App() {
@@ -145,6 +146,7 @@ export default function App() {
     }
   }, []);
 
+  // HUELA DIRECTA AL SENSOR (Sin menús de USB/NFC)
   async function activarHuellaBiometrica() {
     setErrorBiometria('');
     try {
@@ -161,7 +163,10 @@ export default function App() {
               displayName: "Elkin Bohorquez"
             },
             pubKeyCredParams: [{ alg: -7, type: "public-key" }],
-            authenticatorSelection: { userVerification: "required" },
+            authenticatorSelection: { 
+              authenticatorAttachment: "platform", // Directo al sensor del celular
+              userVerification: "required" 
+            },
             timeout: 60000
           }
         });
@@ -175,7 +180,8 @@ export default function App() {
       }
       throw new Error('Sin biometria');
     } catch (err) {
-      setErrorBiometria('Usa tu PIN de acceso.');
+      console.log('Error biometría:', err);
+      setErrorBiometria('Sensor cancelado o no disponible. Ingresa con tu PIN.');
     }
   }
 
@@ -328,35 +334,139 @@ export default function App() {
     });
   }
 
-  function enviarWhatsApp(envio) {
+  // GENERAR PDF NATIVO EN MEMORIA
+  function generarDocJsPDF(envio) {
+    const doc = new jsPDF({ format: 'letter', unit: 'mm' });
     const kilos = Number(envio.kilos_calc || envio.kilos || 0);
     const cajas = Number(envio.cajas_calc || envio.cajas || 0);
-    const fruta = Number(envio.total_venta_fruta_calc || envio.total_venta_fruta || (kilos * (envio.precio_venta_kg || 11200)));
-    const flete = Number(envio.total_flete_calc || envio.total_flete || (cajas * 32000));
-    const total = Number(envio.total_facturado_calc || envio.total_facturado_cliente || (fruta + flete));
+    const pVenta = Number(envio.precio_venta_kg_calc || envio.precio_venta_kg || 11200);
+    const vFruta = Number(envio.total_venta_fruta_calc || envio.total_venta_fruta || (kilos * pVenta));
+    const vFlete = Number(envio.total_flete_calc || envio.total_flete || (cajas * 32000));
+    const vTotal = Number(envio.total_facturado_calc || envio.total_facturado_cliente || (vFruta + vFlete));
 
+    // Encabezado
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text(`CUENTA DE COBRO # ${envio.consecutivo}`, 105, 25, { align: 'center' });
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100);
+    doc.text(`Fecha: ${envio.fecha_envio}`, 105, 32, { align: 'center' });
+
+    doc.setDrawColor(20, 20, 20);
+    doc.setLineWidth(0.5);
+    doc.line(20, 36, 195, 36);
+
+    // Cliente y Beneficiario
+    doc.setFontSize(10);
+    doc.setTextColor(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Cliente: Innovative Kitchen SAS', 20, 46);
+    doc.setFont('helvetica', 'normal');
+    doc.text('NIT # 901.069.237-4', 20, 52);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Beneficiario: Elkin Bohórquez Tarud', 195, 46, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.text('C.C. 72.271.189', 195, 52, { align: 'right' });
+
+    // Tabla de valores
+    doc.setFillColor(245, 247, 250);
+    doc.rect(20, 62, 175, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.text('Concepto', 24, 67);
+    doc.text('Cant', 130, 67, { align: 'center' });
+    doc.text('Valor', 190, 67, { align: 'right' });
+
+    doc.line(20, 70, 195, 70);
+
+    // Filas
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Aguacate Hass - Grueso (${formatoCOP(pVenta)}/Kg)`, 24, 78);
+    doc.text(`${kilos} Kg`, 130, 78, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.text(formatoCOP(vFruta), 190, 78, { align: 'right' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Envío Transporte (${cajas} cajas @ $32.000)`, 24, 88);
+    doc.text(`${cajas} cjs`, 130, 88, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.text(formatoCOP(vFlete), 190, 88, { align: 'right' });
+
+    doc.line(20, 94, 195, 94);
+
+    // Total
+    doc.setFillColor(245, 247, 250);
+    doc.rect(20, 95, 175, 10, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('TOTAL A PAGAR', 24, 102);
+    doc.text(formatoCOP(vTotal), 190, 102, { align: 'right' });
+
+    // Datos Bancarios
+    doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'normal');
+    doc.rect(20, 114, 175, 16);
+    doc.text('Forma de Pago: Bancolombia Ahorros # 554 879 253 72', 24, 121);
+    doc.text('A nombre de: Elkin Bohórquez Tarud (CC 72.271.189)', 24, 126);
+
+    // Firma
+    try {
+      const img = new Image();
+      img.src = '/firma.png';
+      doc.addImage(img, 'PNG', 20, 142, 45, 15);
+    } catch (e) {
+      console.log('Firma gráfica omitida en PDF');
+    }
+
+    doc.setLineWidth(0.3);
+    doc.line(20, 160, 75, 160);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('Elkin Bohórquez Tarud', 20, 165);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text('C.C. 72.271.189', 20, 170);
+
+    return doc;
+  }
+
+  // COMPARTIR EL ARCHIVO PDF REAL POR WHATSAPP NATIVO
+  async function compartirPDFWhatsApp(envio) {
+    try {
+      const doc = generarDocJsPDF(envio);
+      const pdfBlob = doc.output('blob');
+      const nombreArchivo = `Cuenta_Cobro_${envio.consecutivo}_Aguacates.pdf`;
+      const archivo = new File([pdfBlob], nombreArchivo, { type: 'application/pdf' });
+
+      // Si el celular soporta compartir archivos directamente
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        await navigator.share({
+          files: [archivo],
+          title: `Cuenta de Cobro #${envio.consecutivo}`,
+          text: `Hola, adjunto la Cuenta de Cobro #${envio.consecutivo} de Aguacates.`
+        });
+        return;
+      }
+    } catch (err) {
+      console.log('Compartir directo no soportado o cancelado:', err);
+    }
+
+    // Fallback estándar (descarga el archivo y abre chat con texto)
+    const doc = generarDocJsPDF(envio);
+    doc.save(`Cuenta_Cobro_${envio.consecutivo}_Aguacates.pdf`);
+    
+    // Abre WhatsApp con el resumen de texto
     const lineas = [
       `*CUENTA DE COBRO #${envio.consecutivo}*`,
       `📅 Fecha: ${envio.fecha_envio}`,
-      `🥑 Concepto: Aguacate Hass - Grueso`,
-      `📦 Cantidad: ${kilos} Kg (${cajas} Cajas)`,
-      `💵 Fruta: ${formatoCOP(fruta)}`,
-      `🚚 Flete (${cajas} cajas @ $32.000): ${formatoCOP(flete)}`,
-      `---------------------------------`,
-      `💰 *TOTAL A PAGAR: ${formatoCOP(total)}*`,
-      `---------------------------------`,
-      `💳 *Datos Bancarios:*`,
-      `Bancolombia Ahorros # 554 879 253 72`,
-      `Elkin Bohórquez Tarud - CC 72.271.189`,
-      ``,
-      `Quedo atento a la confirmación de la transferencia. ¡Muchas gracias!`
+      `🥑 Aguacate Hass - Grueso (${envio.kilos_calc || envio.kilos} Kg)`,
+      `💰 Total: ${formatoCOP(envio.total_facturado_calc || envio.total_facturado_cliente)}`,
+      `Te adjunto el documento PDF de la cuenta.`
     ];
-
-    const mensajeCompleto = lineas.join('\n');
-    const textoCodificado = encodeURIComponent(mensajeCompleto);
-    const urlApi = `https://api.whatsapp.com/send?text=${textoCodificado}`;
-
-    window.open(urlApi, '_blank');
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(lineas.join('\n'))}`;
+    window.open(url, '_blank');
   }
 
   function abrirModalCrearPedido() {
@@ -1044,51 +1154,8 @@ export default function App() {
     return direccionOrden === 'asc' ? <ArrowUp size={12} color="#38bdf8" /> : <ArrowDown size={12} color="#38bdf8" />;
   };
 
-  if (!autenticado) {
-    return (
-      <div style={{ minHeight: '100vh', background: '#090d16', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-        <div style={{ background: '#131b2e', border: '1px solid #1e293b', borderRadius: '24px', padding: '36px 24px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)' }}>
-          <div style={{ fontSize: '48px', marginBottom: '8px' }}>🥑</div>
-          <h2 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 4px' }}>Aguacates & Tesorería</h2>
-          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 24px' }}>Identifícate para ingresar</p>
-
-          <button
-            onClick={activarHuellaBiometrica}
-            style={{ width: '100%', padding: '15px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', marginBottom: '16px', boxShadow: '0 4px 14px rgba(22, 163, 74, 0.3)' }}
-          >
-            <Fingerprint size={22} /> Tocar Huella / FaceID
-          </button>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '16px 0', color: '#64748b', fontSize: '11px' }}>
-            <div style={{ flex: 1, height: '1px', background: '#1e293b' }}></div>
-            <span>O DIGITA TU PIN</span>
-            <div style={{ flex: 1, height: '1px', background: '#1e293b' }}></div>
-          </div>
-
-          <form onSubmit={desbloquearConPin} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <input
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength="4"
-              placeholder="PIN de 4 dígitos"
-              autoFocus
-              value={pinInput}
-              onChange={(e) => setPinInput(e.target.value)}
-              style={{ width: '100%', padding: '12px', textAlign: 'center', letterSpacing: '8px', fontSize: '22px', fontWeight: 'bold', background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', color: '#fff', boxSizing: 'border-box' }}
-            />
-            {errorBiometria && <span style={{ color: '#ef4444', fontSize: '11px' }}>{errorBiometria}</span>}
-            <button
-              type="submit"
-              style={{ width: '100%', padding: '12px', background: '#38bdf8', color: '#090d16', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
-            >
-              Ingresar con PIN
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+  const montoRecibidoNum = Number(montoRealRecibido || totalSeleccionadoAbonoMultiple);
+  const diferenciaDescuento = Math.max(0, totalSeleccionadoAbonoMultiple - montoRecibidoNum);
 
   return (
     <div style={{ padding: '12px', fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '1280px', margin: '0 auto', background: tema.bg, color: tema.textMain, minHeight: '100vh', boxSizing: 'border-box', overflowX: 'hidden' }}>
@@ -1147,8 +1214,6 @@ export default function App() {
 
       {/* 6 TARJETAS KPI PRINCIPALES */}
       <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr 1fr' : 'repeat(auto-fit, minmax(190px, 1fr))', gap: '8px', marginBottom: '14px' }}>
-        
-        {/* 1. Por Cobrar */}
         <div 
           onClick={() => setFiltroEstado(filtroEstado === 'pendientes' ? 'todos' : 'pendientes')}
           style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${filtroEstado === 'pendientes' ? '#f97316' : tema.border}`, cursor: 'pointer' }}
@@ -1163,7 +1228,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* 2. Debo a Edison */}
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>DEBO A EDISON</span>
@@ -1175,7 +1239,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* 3. Debo a Macareo */}
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>DEBO A MACAREO</span>
@@ -1189,7 +1252,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* 4. Merma / Rendimiento */}
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: '1px solid rgba(234, 179, 8, 0.4)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: '#eab308', fontSize: '10px', fontWeight: '800' }}>
             <span>MERMA / BÁSCULA</span>
@@ -1203,7 +1265,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* 5. Margen Bruto */}
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>MARGEN BRUTO</span>
@@ -1215,7 +1276,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* 6. Fruta Despachada */}
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>FRUTA DESPACHADA</span>
@@ -1228,7 +1288,6 @@ export default function App() {
             En {totalCajas} cajas ({enviosParaMetricas.length} envíos)
           </div>
         </div>
-
       </div>
 
       {/* FILTROS */}
@@ -1458,10 +1517,10 @@ export default function App() {
                       </button>
 
                       <button
-                        onClick={() => enviarWhatsApp(r)}
+                        onClick={() => compartirPDFWhatsApp(r)}
                         style={{ padding: '9px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                       >
-                        <Send size={14} /> WhatsApp
+                        <Share2 size={14} /> WhatsApp PDF
                       </button>
 
                       {saldo > 0 ? (
@@ -1612,8 +1671,8 @@ export default function App() {
                           <button onClick={() => abrirModalCuentaSeguro(r)} style={{ padding: '6px 10px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
                             <FileText size={13} /> Cuenta
                           </button>
-                          <button onClick={() => enviarWhatsApp(r)} style={{ padding: '6px 10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
-                            <Send size={13} /> WhatsApp
+                          <button onClick={() => compartirPDFWhatsApp(r)} style={{ padding: '6px 10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Share2 size={13} /> PDF
                           </button>
                           {saldo > 0 ? (
                             <button onClick={() => abrirModalAbono(r)} style={{ padding: '6px 10px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
@@ -1635,64 +1694,47 @@ export default function App() {
         )
       )}
 
-      {/* ==================== VISTA 2: RUN CHART CLARO & ANALÍTICA REAL ==================== */}
+      {/* VISTA 2: RUN CHART */}
       {pestanaActiva === 'dashboard' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
-          {/* 6 TARJETAS ANALÍTICAS ACCIONABLES */}
           <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '10px' }}>
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>MARGEN PROMEDIO / KG</span>
-              <div style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', marginTop: '4px' }}>
-                {formatoCOP(margenPromedioPorKilo)}
-              </div>
+              <div style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', marginTop: '4px' }}>{formatoCOP(margenPromedioPorKilo)}</div>
               <span style={{ fontSize: '11px', color: tema.textMuted }}>Ganancia neta limpia por kilo</span>
             </div>
 
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>RENTABILIDAD GLOBAL</span>
-              <div style={{ fontSize: '20px', fontWeight: '900', color: '#38bdf8', marginTop: '4px' }}>
-                {porcentajeRentabilidadGlobal.toFixed(1)}%
-              </div>
+              <div style={{ fontSize: '20px', fontWeight: '900', color: '#38bdf8', marginTop: '4px' }}>{porcentajeRentabilidadGlobal.toFixed(1)}%</div>
               <span style={{ fontSize: '11px', color: tema.textMuted }}>Margen bruto sobre venta</span>
             </div>
 
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>COSTO MEDIO EDISON</span>
-              <div style={{ fontSize: '20px', fontWeight: '900', color: '#ef4444', marginTop: '4px' }}>
-                {formatoCOP(costoPromedioFrutaKg)} / Kg
-              </div>
+              <div style={{ fontSize: '20px', fontWeight: '900', color: '#ef4444', marginTop: '4px' }}>{formatoCOP(costoPromedioFrutaKg)} / Kg</div>
               <span style={{ fontSize: '11px', color: tema.textMuted }}>Precio ponderado de compra</span>
             </div>
 
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>INCIDENCIA DE FLETE</span>
-              <div style={{ fontSize: '20px', fontWeight: '900', color: '#eab308', marginTop: '4px' }}>
-                {porcentajeIncidenciaFlete.toFixed(1)}%
-              </div>
+              <div style={{ fontSize: '20px', fontWeight: '900', color: '#eab308', marginTop: '4px' }}>{porcentajeIncidenciaFlete.toFixed(1)}%</div>
               <span style={{ fontSize: '11px', color: tema.textMuted }}>De la venta se va en fletes</span>
             </div>
 
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>IMPACTO MERMA ($ COP)</span>
-              <div style={{ fontSize: '20px', fontWeight: '900', color: metricaMerma.kilosDiferencia > 0 ? '#f97316' : '#22c55e', marginTop: '4px' }}>
-                {formatoCOP(Math.abs(metricaMerma.valorDineroMerma))}
-              </div>
-              <span style={{ fontSize: '11px', color: tema.textMuted }}>
-                {metricaMerma.kilosDiferencia > 0 ? `${metricaMerma.kilosDiferencia.toFixed(1)} Kg no cobrados` : 'Cubierto por Edison'}
-              </span>
+              <div style={{ fontSize: '20px', fontWeight: '900', color: metricaMerma.kilosDiferencia > 0 ? '#f97316' : '#22c55e', marginTop: '4px' }}>{formatoCOP(Math.abs(metricaMerma.valorDineroMerma))}</div>
+              <span style={{ fontSize: '11px', color: tema.textMuted }}>{metricaMerma.kilosDiferencia > 0 ? `${metricaMerma.kilosDiferencia.toFixed(1)} Kg no cobrados` : 'Cubierto por Edison'}</span>
             </div>
 
             <div style={{ background: tema.cardBg, padding: '14px', borderRadius: '14px', border: `1px solid ${tema.border}` }}>
               <span style={{ fontSize: '11px', fontWeight: 'bold', color: tema.textMuted }}>UTILIDAD / DESPACHO</span>
-              <div style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', marginTop: '4px' }}>
-                {formatoCOP(gananciaPromedioDespacho)}
-              </div>
+              <div style={{ fontSize: '20px', fontWeight: '900', color: '#22c55e', marginTop: '4px' }}>{formatoCOP(gananciaPromedioDespacho)}</div>
               <span style={{ fontSize: '11px', color: tema.textMuted }}>Ganancia media por camión</span>
             </div>
           </div>
 
-          {/* Gráfico Run Chart con Números en las 3 Curvas */}
           <div style={{ background: tema.cardBg, padding: '20px', borderRadius: '16px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
               <div>
@@ -1722,24 +1764,14 @@ export default function App() {
               </div>
             </div>
 
-            {/* Leyenda interactiva */}
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '14px', padding: '10px 14px', background: darkMode ? '#0b1120' : '#f8fafc', borderRadius: '10px', border: `1px solid ${tema.border}` }}>
-              <div 
-                onClick={() => setSeriesVisibles(s => ({ ...s, venta: !s.venta }))}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#38bdf8', cursor: 'pointer', opacity: seriesVisibles.venta ? 1 : 0.4 }}
-              >
+              <div onClick={() => setSeriesVisibles(s => ({ ...s, venta: !s.venta }))} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#38bdf8', cursor: 'pointer', opacity: seriesVisibles.venta ? 1 : 0.4 }}>
                 <span style={{ width: '12px', height: '3px', background: '#38bdf8', borderRadius: '2px' }}></span> 🔵 Facturado Innovative
               </div>
-              <div 
-                onClick={() => setSeriesVisibles(s => ({ ...s, costoFruta: !s.costoFruta }))}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#ef4444', cursor: 'pointer', opacity: seriesVisibles.costoFruta ? 1 : 0.4 }}
-              >
+              <div onClick={() => setSeriesVisibles(s => ({ ...s, costoFruta: !s.costoFruta }))} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#ef4444', cursor: 'pointer', opacity: seriesVisibles.costoFruta ? 1 : 0.4 }}>
                 <span style={{ width: '12px', height: '3px', background: '#ef4444', borderRadius: '2px', borderBottom: '1px dashed #ef4444' }}></span> 🔴 Costo Fruta Edison
               </div>
-              <div 
-                onClick={() => setSeriesVisibles(s => ({ ...s, margen: !s.margen }))}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#22c55e', cursor: 'pointer', opacity: seriesVisibles.margen ? 1 : 0.4 }}
-              >
+              <div onClick={() => setSeriesVisibles(s => ({ ...s, margen: !s.margen }))} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', color: '#22c55e', cursor: 'pointer', opacity: seriesVisibles.margen ? 1 : 0.4 }}>
                 <span style={{ width: '12px', height: '3px', background: '#22c55e', borderRadius: '2px' }}></span> 🟢 Margen Bruto Real
               </div>
             </div>
@@ -1753,12 +1785,10 @@ export default function App() {
                   <line x1={padX} y1={(chartHeight - padY * 2) / 2 + padY} x2={chartWidth - padX} y2={(chartHeight - padY * 2) / 2 + padY} stroke={tema.chartGrid} strokeDasharray="3 3" />
                   <line x1={padX} y1={chartHeight - padY} x2={chartWidth - padX} y2={chartHeight - padY} stroke={tema.chartGrid} />
 
-                  {/* Curvas */}
                   {seriesVisibles.venta && <path d={generarPath('venta')} fill="none" stroke="#38bdf8" strokeWidth="2.5" />}
                   {seriesVisibles.costoFruta && <path d={generarPath('costoFruta')} fill="none" stroke="#ef4444" strokeWidth="2" strokeDasharray="4 2" />}
                   {seriesVisibles.margen && <path d={generarPath('margen')} fill="none" stroke="#22c55e" strokeWidth="3" />}
 
-                  {/* NÚMEROS Y PUNTOS EN CADA LÍNEA */}
                   {datosGrafico.map((d, i) => {
                     const x = padX + (i / (datosGrafico.length > 1 ? datosGrafico.length - 1 : 1)) * (chartWidth - padX * 2);
                     const yVenta = chartHeight - padY - (d.venta / maxGrafico) * (chartHeight - padY * 2);
@@ -1796,11 +1826,10 @@ export default function App() {
               </div>
             )}
           </div>
-
         </div>
       )}
 
-      {/* MODAL: EDITAR PEDIDO (LÁPIZ #593 / #594) */}
+      {/* MODAL: EDITAR PEDIDO */}
       {modalEditarPedido && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
@@ -1917,7 +1946,52 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== MODAL CUENTA DE COBRO BLINDADO Y ALINEADO ==================== */}
+      {/* MODAL: LIQUIDAR BÁSCULA */}
+      {modalLiquidarPedido && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Confirmar Báscula Innovative</h3>
+              <button onClick={() => setModalLiquidarPedido(null)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <div style={{ background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                <span>Cajas:</span> <b>{modalLiquidarPedido.cajas} cajas</b>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Flete a Cobrar a Innovative:</span>
+                <b style={{ color: '#22c55e' }}>$32.000 / caja ({formatoCOP(Number(modalLiquidarPedido.cajas) * 32000)})</b>
+              </div>
+            </div>
+
+            <form onSubmit={confirmarLiquidacionPedido} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Consecutivo</label>
+                  <input required value={formLiquidar.consecutivo} onChange={(e) => setFormLiquidar({...formLiquidar, consecutivo: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Fecha Recepción</label>
+                  <input type="date" required value={formLiquidar.fecha_envio} onChange={(e) => setFormLiquidar({...formLiquidar, fecha_envio: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#22c55e' }}>Kilos Netos Cantados por Innovative *</label>
+                <input type="number" step="any" required placeholder="Ej: 148.50" autoFocus value={formLiquidar.kilos} onChange={(e) => setFormLiquidar({...formLiquidar, kilos: e.target.value})} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: '1px solid #22c55e', color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button type="button" onClick={() => setModalLiquidarPedido(null)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '8px 18px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Crear Despacho Oficial</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL CUENTA DE COBRO ==================== */}
       {modalCuentaCobro && (
         <div 
           onClick={() => setModalCuentaCobro(null)}
@@ -1949,20 +2023,20 @@ export default function App() {
               boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
             }}
           >
-            {/* Botonera superior */}
+            {/* Botones */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button 
                   onClick={() => imprimirConNombre(modalCuentaCobro)} 
                   style={{ padding: '7px 14px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
                 >
-                  <Printer size={15} /> Imprimir / PDF
+                  <Printer size={15} /> Imprimir
                 </button>
                 <button 
-                  onClick={() => enviarWhatsApp(modalCuentaCobro)} 
+                  onClick={() => compartirPDFWhatsApp(modalCuentaCobro)} 
                   style={{ padding: '7px 14px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
                 >
-                  <Send size={15} /> WhatsApp
+                  <Share2 size={15} /> Compartir PDF WhatsApp
                 </button>
               </div>
               <button 
@@ -1983,7 +2057,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Datos Cliente / Beneficiario */}
+            {/* Datos */}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '16px', lineHeight: '1.4' }}>
               <div>
                 <b>Cliente:</b> Innovative Kitchen SAS<br />
@@ -1995,7 +2069,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tabla Conceptos */}
+            {/* Tabla */}
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', marginBottom: '16px' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderTop: '1px solid #0f172a', borderBottom: '1px solid #0f172a' }}>
@@ -2066,26 +2140,6 @@ export default function App() {
               </div>
             </div>
 
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: EDITAR PRECIO COMPRA EDISON */}
-      {modalEditarPrecioCompra && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
-          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '340px', border: `1px solid ${tema.border}` }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: '15px', fontWeight: 'bold' }}>Precio Compra Edison</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
-              {[6000, 6500, 7000, 7500, 8000, 8500, 9000].map(pr => (
-                <button key={pr} onClick={() => actualizarPrecioCompra(modalEditarPrecioCompra.id, pr)} style={{ padding: '8px 12px', borderRadius: '6px', border: `1px solid ${modalEditarPrecioCompra.precio_compra_kg === pr ? '#ef4444' : tema.border}`, background: modalEditarPrecioCompra.precio_compra_kg === pr ? 'rgba(239, 68, 68, 0.2)' : tema.inputBg, color: tema.textMain, fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{formatoCOP(pr)} / Kg</span>
-                  {modalEditarPrecioCompra.precio_compra_kg === pr && <Check size={14} color="#ef4444" />}
-                </button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => setModalEditarPrecioCompra(null)} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '6px', cursor: 'pointer' }}>Cerrar</button>
-            </div>
           </div>
         </div>
       )}
