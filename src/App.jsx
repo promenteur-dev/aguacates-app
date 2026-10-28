@@ -4,7 +4,7 @@ import {
   PlusCircle, Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
   BarChart3, ListFilter, Search, Filter, DollarSign, CheckCircle2, 
   ArrowUpRight, Truck, Check, Edit2, FileText, Printer, Send, CheckSquare, Square,
-  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Scale
+  ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock
 } from 'lucide-react';
 
 export default function App() {
@@ -12,8 +12,8 @@ export default function App() {
   const [pinInput, setPinInput] = useState('');
   const [errorBiometria, setErrorBiometria] = useState('');
 
-  // Detección directa de pantalla móvil
-  const [esMovil, setEsMovil] = useState(window.innerWidth < 768);
+  // Detección de dispositivo móvil
+  const [esMovil, setEsMovil] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
 
   useEffect(() => {
     const handleResize = () => setEsMovil(window.innerWidth < 768);
@@ -114,41 +114,63 @@ export default function App() {
   const TARIFAS_FLETE = [32000, 30000, 35000];
 
   useEffect(() => {
-    const sesionValida = sessionStorage.getItem('aguacates_auth');
-    if (sesionValida === 'true') {
+    const sesion = sessionStorage.getItem('aguacates_auth_ok');
+    if (sesion === 'true') {
       setAutenticado(true);
       cargarDatos();
-    } else {
-      intentarBiometria();
     }
   }, []);
 
-  async function intentarBiometria() {
+  async function activarHuellaBiometrica() {
     setErrorBiometria('');
     try {
-      if (window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
-        const disponible = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-        if (disponible) {
-          sessionStorage.setItem('aguacates_auth', 'true');
+      if (window.PublicKeyCredential) {
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+        const cred = await navigator.credentials.create({
+          publicKey: {
+            challenge,
+            rp: { name: "Aguacates & Tesorería" },
+            user: {
+              id: new Uint8Array([1, 2, 3, 4]),
+              name: "elkinbt@gmail.com",
+              displayName: "Elkin Bohorquez"
+            },
+            pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+            authenticatorSelection: { userVerification: "required" },
+            timeout: 60000
+          }
+        });
+
+        if (cred) {
+          sessionStorage.setItem('aguacates_auth_ok', 'true');
           setAutenticado(true);
           cargarDatos();
+          return;
         }
       }
+      throw new Error('Sin biometría activa');
     } catch (err) {
-      console.log('Biometría cancelada o no disponible:', err);
+      setErrorBiometria('Huella no reconocida o cancelada. Usa tu PIN.');
     }
   }
 
   function desbloquearConPin(e) {
     e.preventDefault();
     if (pinInput === '7227' || pinInput === '0000') {
-      sessionStorage.setItem('aguacates_auth', 'true');
+      sessionStorage.setItem('aguacates_auth_ok', 'true');
       setAutenticado(true);
       cargarDatos();
     } else {
-      setErrorBiometria('PIN incorrecto. Intenta de nuevo.');
+      setErrorBiometria('PIN incorrecto. Prueba de nuevo.');
       setPinInput('');
     }
+  }
+
+  function cerrarSesion() {
+    sessionStorage.removeItem('aguacates_auth_ok');
+    setAutenticado(false);
+    setPinInput('');
   }
 
   function calcularSiguienteConsecutivo(listaEnvios) {
@@ -168,9 +190,7 @@ export default function App() {
       .select('*')
       .order('consecutivo', { ascending: false });
 
-    if (dataEnvios) {
-      setEnvios(dataEnvios);
-    }
+    if (dataEnvios) setEnvios(dataEnvios);
 
     const { data: dataPedidos } = await supabase
       .from('pedidos')
@@ -405,7 +425,7 @@ export default function App() {
   function abrirModalPagoProveedor() {
     setDespachosProvSeleccionados([]);
     setFechaPagoProv(new Date().toISOString().split('T')[0]);
-    setNotasPagoProv('Transferencia Bancolombia liquidación despachos');
+    setNotasPagoProv('Transferencia Bancolombia liquidación');
     setModalPagoProvAbierto(true);
   }
 
@@ -523,7 +543,7 @@ export default function App() {
           monto: montoParaEste,
           fecha: fechaAbonoMultiple,
           metodo_pago: 'Transferencia',
-          notas: notasAbonoMultiple || `Abono parcial recibido (${formatoCOP(valorReal)})`
+          notas: notasAbonoMultiple || `Abono parcial (${formatoCOP(valorReal)})`
         };
       }).filter(a => a.monto > 0);
     }
@@ -714,6 +734,21 @@ export default function App() {
   const totalCajas = enviosParaMetricas.reduce((acc, r) => acc + Number(r.cajas || 0), 0);
   const promedioMargenDespacho = enviosParaMetricas.length > 0 ? (margenTotal / enviosParaMetricas.length) : 0;
 
+  // CÁLCULO DE MERMA REAL
+  const metricaMerma = useMemo(() => {
+    const kilosTeoricosEdison = enviosParaMetricas.reduce((acc, e) => acc + (Number(e.cajas || 0) * 25), 0);
+    const kilosRealesBascula = enviosParaMetricas.reduce((acc, e) => acc + Number(e.kilos || 0), 0);
+    const kilosDiferencia = kilosTeoricosEdison - kilosRealesBascula;
+    const porcentajeMerma = kilosTeoricosEdison > 0 ? ((kilosDiferencia / kilosTeoricosEdison) * 100) : 0;
+
+    return {
+      kilosTeoricosEdison,
+      kilosRealesBascula,
+      kilosDiferencia,
+      porcentajeMerma
+    };
+  }, [enviosParaMetricas]);
+
   const abonosDelEnvioModal = useMemo(() => {
     if (!modalHistorialAbonos) return [];
     return abonosCliente.filter(a => a.envio_id === modalHistorialAbonos.id);
@@ -828,20 +863,20 @@ export default function App() {
   const montoRecibidoNum = Number(montoRealRecibido || totalSeleccionadoAbonoMultiple);
   const diferenciaDescuento = Math.max(0, totalSeleccionadoAbonoMultiple - montoRecibidoNum);
 
-  // Pantalla de bloqueo
+  // ==================== PANTALLA DE BLOQUEO BIOMÉTRICO ====================
   if (!autenticado) {
     return (
       <div style={{ minHeight: '100vh', background: '#090d16', color: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-        <div style={{ background: '#131b2e', border: '1px solid #1e293b', borderRadius: '24px', padding: '32px 20px', maxWidth: '360px', width: '100%', textAlign: 'center' }}>
-          <div style={{ fontSize: '44px', marginBottom: '8px' }}>🥑</div>
+        <div style={{ background: '#131b2e', border: '1px solid #1e293b', borderRadius: '24px', padding: '36px 24px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)' }}>
+          <div style={{ fontSize: '48px', marginBottom: '8px' }}>🥑</div>
           <h2 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 4px' }}>Aguacates & Tesorería</h2>
-          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 20px' }}>Acceso seguro biométrico</p>
+          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 24px' }}>Identifícate para ingresar</p>
 
           <button
-            onClick={intentarBiometria}
-            style={{ width: '100%', padding: '14px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', marginBottom: '16px' }}
+            onClick={activarHuellaBiometrica}
+            style={{ width: '100%', padding: '15px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', marginBottom: '16px', boxShadow: '0 4px 14px rgba(22, 163, 74, 0.3)' }}
           >
-            <Fingerprint size={22} /> Desbloquear con Huella
+            <Fingerprint size={22} /> Tocar Huella / FaceID
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '16px 0', color: '#64748b', fontSize: '11px' }}>
@@ -860,14 +895,14 @@ export default function App() {
               autoFocus
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value)}
-              style={{ width: '100%', padding: '12px', textAlign: 'center', letterSpacing: '8px', fontSize: '20px', fontWeight: 'bold', background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', color: '#fff', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '12px', textAlign: 'center', letterSpacing: '8px', fontSize: '22px', fontWeight: 'bold', background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', color: '#fff', boxSizing: 'border-box' }}
             />
             {errorBiometria && <span style={{ color: '#ef4444', fontSize: '11px' }}>{errorBiometria}</span>}
             <button
               type="submit"
               style={{ width: '100%', padding: '12px', background: '#38bdf8', color: '#090d16', border: 'none', borderRadius: '12px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
             >
-              Ingresar
+              Ingresar con PIN
             </button>
           </form>
         </div>
@@ -899,6 +934,9 @@ export default function App() {
             <button onClick={exportarCSV} title="Exportar CSV" style={{ width: '36px', height: '36px', background: tema.cardBg, border: `1px solid ${tema.border}`, borderRadius: '8px', color: '#38bdf8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Download size={15} />
             </button>
+            <button onClick={cerrarSesion} title="Bloquear App" style={{ width: '36px', height: '36px', background: tema.cardBg, border: `1px solid ${tema.border}`, borderRadius: '8px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Lock size={15} />
+            </button>
           </div>
         </div>
 
@@ -927,8 +965,10 @@ export default function App() {
         </div>
       </div>
 
-      {/* TARJETAS KPI (2 COLUMNAS EN CELULAR) */}
-      <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr 1fr' : 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px', marginBottom: '14px' }}>
+      {/* ==================== LAS 6 TARJETAS KPI (GRID RESPONSIVE) ==================== */}
+      <div style={{ display: 'grid', gridTemplateColumns: esMovil ? '1fr 1fr' : 'repeat(auto-fit, minmax(190px, 1fr))', gap: '8px', marginBottom: '14px' }}>
+        
+        {/* 1. Por Cobrar */}
         <div 
           onClick={() => setFiltroEstado(filtroEstado === 'pendientes' ? 'todos' : 'pendientes')}
           style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${filtroEstado === 'pendientes' ? '#f97316' : tema.border}`, cursor: 'pointer' }}
@@ -943,6 +983,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* 2. Debo a Edison */}
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>DEBO A EDISON</span>
@@ -954,6 +995,35 @@ export default function App() {
           </div>
         </div>
 
+        {/* 3. Debo a Macareo */}
+        <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
+            <span>DEBO A MACAREO</span>
+            <Truck size={13} color="#22c55e" />
+          </div>
+          <div style={{ fontSize: '18px', fontWeight: '800', color: deudaMacareo === 0 ? '#22c55e' : '#eab308', marginTop: '4px' }}>
+            {formatoCOP(deudaMacareo)}
+          </div>
+          <div style={{ fontSize: '10px', color: '#22c55e', marginTop: '2px', fontWeight: '600' }}>
+            ✅ Fletes al día ($0)
+          </div>
+        </div>
+
+        {/* 4. Merma / Rendimiento */}
+        <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: '1px solid rgba(234, 179, 8, 0.4)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#eab308', fontSize: '10px', fontWeight: '800' }}>
+            <span>MERMA / RENDIMIENTO</span>
+            <Scale size={13} color="#eab308" />
+          </div>
+          <div style={{ fontSize: '18px', fontWeight: '800', color: metricaMerma.kilosDiferencia > 0 ? '#f97316' : '#22c55e', marginTop: '4px' }}>
+            {metricaMerma.kilosDiferencia > 0 ? `-${metricaMerma.kilosDiferencia.toFixed(1)} Kg` : `+${Math.abs(metricaMerma.kilosDiferencia).toFixed(1)} Kg`}
+          </div>
+          <div style={{ fontSize: '10px', color: tema.textMuted, marginTop: '2px' }}>
+            {metricaMerma.kilosDiferencia > 0 ? `${metricaMerma.porcentajeMerma.toFixed(1)}% vs 25Kg teór.` : '✅ Cubierto por Edison'}
+          </div>
+        </div>
+
+        {/* 5. Margen Bruto */}
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>MARGEN BRUTO</span>
@@ -965,6 +1035,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* 6. Fruta Despachada */}
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>FRUTA DESPACHADA</span>
@@ -974,9 +1045,10 @@ export default function App() {
             {Number(totalKilos).toFixed(1)} Kg
           </div>
           <div style={{ fontSize: '10px', color: tema.textMuted, marginTop: '2px' }}>
-            En {totalCajas} cajas
+            En {totalCajas} cajas ({enviosParaMetricas.length} envíos)
           </div>
         </div>
+
       </div>
 
       {/* FILTROS */}
@@ -1011,7 +1083,7 @@ export default function App() {
       {/* VISTA 1: REGISTROS */}
       {pestanaActiva === 'registros' && (
         esMovil ? (
-          /* ==================== A) VISTA MÓVIL (TARJETAS INDEPENDIENTES) ==================== */
+          /* ==================== VISTA MÓVIL (TARJETAS NATIVAS) ==================== */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {/* PEDIDOS PENDIENTES */}
             {pedidosPendientesConConsecutivo.map((p) => (
@@ -1108,7 +1180,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Botones al ancho del pulgar */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr auto', gap: '6px' }}>
                       <button
                         onClick={() => abrirModalEditarDespacho(r)}
@@ -1153,7 +1224,7 @@ export default function App() {
             )}
           </div>
         ) : (
-          /* ==================== B) VISTA PC (TABLA COMPLETA) ==================== */
+          /* ==================== VISTA PC (TABLA COMPLETA) ==================== */
           <div style={{ background: tema.cardBg, borderRadius: '14px', border: `1px solid ${tema.border}`, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
