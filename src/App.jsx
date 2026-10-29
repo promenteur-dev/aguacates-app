@@ -5,7 +5,7 @@ import {
   Package, TrendingUp, AlertCircle, RefreshCw, Moon, Sun, X, 
   BarChart3, ListFilter, Search, DollarSign, CheckCircle2, 
   ArrowUpRight, Truck, Check, Edit2, FileText, Download, Send, CheckSquare, Square,
-  ArrowUpDown, ArrowUp, ArrowDown, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins, Share2, AlertTriangle, Layers
+  ArrowUpDown, ArrowUp, ArrowDown, Trash2, Clock, CheckCheck, Fingerprint, Scale, Lock, Coins, Share2, AlertTriangle
 } from 'lucide-react';
 
 export default function App() {
@@ -55,7 +55,7 @@ export default function App() {
   const [montoRealRecibido, setMontoRealRecibido] = useState('');
   const [esDescuentoDefinitivo, setEsDescuentoDefinitivo] = useState(true);
 
-  // Formulario Flete Pedido (Macareo + propina)
+  // Formulario Flete Pedido
   const [formFletePedido, setFormFletePedido] = useState({
     monto: '',
     propina: '0',
@@ -296,11 +296,10 @@ export default function App() {
     return { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.18)', texto: 'Vencido' };
   }
 
-  // MENSAJE DE COBRO CONSOLIDADO GLOBAL POR WHATSAPP
   function cobrarCarteraCompletaWhatsApp() {
     const pendientes = envios.filter(e => Number(e.saldo_pendiente || 0) > 0);
     if (pendientes.length === 0) {
-      alert('¡Excelente! No hay facturas pendientes de cobro.');
+      alert('No hay facturas pendientes de cobro.');
       return;
     }
 
@@ -738,7 +737,7 @@ export default function App() {
     }
   }
 
-  function abrirModalAbono(envio) {
+  function abrirModalAbonoIndividual(envio) {
     setEnvioSeleccionado(envio);
     setMontoAbono(envio.saldo_pendiente > 0 ? envio.saldo_pendiente : '');
     setFechaAbono(new Date().toISOString().split('T')[0]);
@@ -958,14 +957,6 @@ export default function App() {
     }, 0);
   }, [despachosProvSeleccionados, despachosPendientesParaProveedor]);
 
-  const mesesDisponibles = useMemo(() => {
-    const meses = new Set();
-    envios.forEach(e => {
-      if (e.fecha_envio) meses.add(e.fecha_envio.substring(0, 7));
-    });
-    return Array.from(meses).sort().reverse();
-  }, [envios]);
-
   const pedidosPendientesConConsecutivo = useMemo(() => {
     const pedidosActivos = pedidos.filter(p => p.estado !== 'liquidado');
     return pedidosActivos.map((p, idx) => {
@@ -1028,7 +1019,7 @@ export default function App() {
   const totalKilos = enviosParaMetricas.reduce((acc, r) => acc + Number(r.kilos || 0), 0);
   const totalCajas = enviosParaMetricas.reduce((acc, r) => acc + Number(r.cajas || 0), 0);
 
-  // Analítica Enriquecida
+  // Analítica
   const margenPromedioPorKilo = totalKilos > 0 ? (margenTotal / totalKilos) : 0;
   const totalFacturadoAnalitica = enviosParaMetricas.reduce((acc, r) => acc + Number(r.total_facturado_cliente || 0), 0);
   const porcentajeRentabilidadGlobal = totalFacturadoAnalitica > 0 ? ((margenTotal / totalFacturadoAnalitica) * 100) : 0;
@@ -1053,7 +1044,6 @@ export default function App() {
     };
   }, [enviosParaMetricas]);
 
-  // Lista de despachos con merma detectada
   const despachosConMerma = useMemo(() => {
     return enviosParaMetricas.map(e => {
       const teorico = Number(e.cajas || 0) * 25;
@@ -1061,16 +1051,8 @@ export default function App() {
       const dif = teorico - real;
       const porc = teorico > 0 ? (dif / teorico) * 100 : 0;
       const costoPerdido = dif * Number(e.precio_compra_kg || 6000);
-      return {
-        ...e,
-        teorico,
-        real,
-        dif,
-        porc,
-        costoPerdido
-      };
-    }).filter(e => e.dif > 0.5) // Filtra diferencias relevantes mayores a medio kilo
-      .sort((a, b) => b.dif - a.dif);
+      return { ...e, teorico, real, dif, porc, costoPerdido };
+    }).filter(e => e.dif > 0.5).sort((a, b) => b.dif - a.dif);
   }, [enviosParaMetricas]);
 
   const abonosDelEnvioModal = useMemo(() => {
@@ -1078,7 +1060,6 @@ export default function App() {
     return abonosCliente.filter(a => a.envio_id === modalHistorialAbonos.id);
   }, [modalHistorialAbonos, abonosCliente]);
 
-  // CÁLCULO PARA EL RUN CHART
   const datosGrafico = useMemo(() => {
     const mapa = {};
     enviosFiltrados.forEach(e => {
@@ -1170,6 +1151,9 @@ export default function App() {
     if (columnaOrden !== columna) return <ArrowUpDown size={12} style={{ opacity: 0.3 }} />;
     return direccionOrden === 'asc' ? <ArrowUp size={12} color="#38bdf8" /> : <ArrowDown size={12} color="#38bdf8" />;
   };
+
+  const montoRecibidoNum = Number(montoRealRecibido || totalSeleccionadoAbonoMultiple);
+  const diferenciaDescuento = Math.max(0, totalSeleccionadoAbonoMultiple - montoRecibidoNum);
 
   if (!autenticado) {
     return (
@@ -1510,7 +1494,7 @@ export default function App() {
               );
             })}
 
-            {/* DESPACHOS FACTURADOS CON SEMÁFORO Y MERMA ESPECÍFICA */}
+            {/* DESPACHOS FACTURADOS CON SEMÁFORO, COSTO EDISON Y MERMA ESPECÍFICA */}
             {loading ? (
               <div style={{ textAlign: 'center', padding: '24px', color: tema.textMuted }}>Cargando registros...</div>
             ) : enviosFiltrados.length === 0 && pedidosPendientesConConsecutivo.length === 0 ? (
@@ -1521,6 +1505,10 @@ export default function App() {
                 const diasCartera = calcularDiasCartera(r.fecha_envio);
                 const semaforo = obtenerColorSemaforo(diasCartera);
 
+                // Costo fruta Edison por despacho
+                const costoEdisonDespacho = Number(r.total_compra_fruta) || (Number(r.kilos || 0) * Number(r.precio_compra_kg || 6000));
+
+                // Merma de este envío frente a 25 Kg
                 const kilosTeoricos = Number(r.cajas || 0) * 25;
                 const kilosReales = Number(r.kilos || 0);
                 const mermaKilos = kilosTeoricos - kilosReales;
@@ -1563,9 +1551,11 @@ export default function App() {
                       </div>
                     </div>
 
+                    {/* DESGLOSE COMPLETO: EDISON + MACAREO + MERMA */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>
                       <div>
                         <span style={{ color: tema.textMuted }}>Cajas:</span> <b>{r.cajas}</b> | <b>{r.kilos} Kg</b><br />
+                        <span style={{ color: tema.textMuted }}>Compra Edison:</span> <b style={{ color: '#ef4444' }}>{formatoCOP(costoEdisonDespacho)}</b><br />
                         <span style={{ color: tema.textMuted }}>Flete Macareo:</span> <b style={{ color: '#22c55e' }}>{formatoCOP(r.total_flete)}</b>
                       </div>
                       <div style={{ textAlign: 'right' }}>
@@ -1582,7 +1572,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Botones Simplificados Sin Redundancias */}
+                    {/* Botones */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '6px' }}>
                       <button
                         onClick={() => abrirModalEditarDespacho(r)}
@@ -1600,7 +1590,7 @@ export default function App() {
 
                       {saldo > 0 ? (
                         <button
-                          onClick={() => abrirModalAbono(r)}
+                          onClick={() => abrirModalAbonoIndividual(r)}
                           style={{ padding: '9px 14px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                           <DollarSign size={14} /> Abono
@@ -1759,7 +1749,7 @@ export default function App() {
                             <FileText size={13} /> Cuenta (PDF)
                           </button>
                           {saldo > 0 ? (
-                            <button onClick={() => abrirModalAbono(r)} style={{ padding: '6px 10px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+                            <button onClick={() => abrirModalAbonoIndividual(r)} style={{ padding: '6px 10px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
                               <DollarSign size={13} /> Abono
                             </button>
                           ) : (
@@ -1778,7 +1768,7 @@ export default function App() {
         )
       )}
 
-      {/* ==================== VISTA 2: DASHBOARD FINANCIERO Y OPERATIVO ==================== */}
+      {/* ==================== VISTA 2: DASHBOARD ==================== */}
       {pestanaActiva === 'dashboard' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
@@ -1820,7 +1810,7 @@ export default function App() {
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontWeight: '900', fontSize: '15px', color: sem.color }}>{formatoCOP(e.saldo_pendiente)}</div>
                       <button
-                        onClick={() => abrirModalAbono(e)}
+                        onClick={() => abrirModalAbonoIndividual(e)}
                         style={{ marginTop: '4px', padding: '4px 8px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
                       >
                         Abonar
@@ -1916,7 +1906,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* SECCIÓN 4: RUN CHART HISTÓRICO */}
+          {/* SECCIÓN 4: RUN CHART */}
           <div style={{ background: tema.cardBg, padding: '20px', borderRadius: '16px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
               <div>
@@ -2011,9 +2001,98 @@ export default function App() {
         </div>
       )}
 
+      {/* ==================== MODALES OPERATIVOS CON Z-INDEX MÁXIMO ==================== */}
+
+      {/* MODAL: ABONO CLIENTE INDIVIDUAL */}
+      {modalAbonoAbierto && envioSeleccionado && (
+        <div 
+          onClick={() => setModalAbonoAbierto(false)}
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '16px' }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '380px', border: `1px solid ${tema.border}` }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700' }}>Registrar Pago #{envioSeleccionado.consecutivo}</h3>
+              <button onClick={() => setModalAbonoAbierto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <form onSubmit={guardarAbono} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: tema.textMuted }}>Monto Recibido (COP)</label>
+                <input type="number" step="any" required autoFocus value={montoAbono} onChange={(e) => setMontoAbono(e.target.value)} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button type="button" onClick={() => setModalAbonoAbierto(false)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '8px 16px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ABONO CLIENTE MÚLTIPLE */}
+      {modalAbonoMultipleAbierto && (
+        <div 
+          onClick={() => setModalAbonoMultipleAbierto(false)}
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '16px' }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '480px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Pago Conjunto Innovative</h3>
+              <button onClick={() => setModalAbonoMultipleAbierto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <form onSubmit={guardarAbonoMultiple} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                {despachosPendientesCliente.map(e => {
+                  const seleccionada = cuentasSeleccionadasModal.includes(e.id);
+                  return (
+                    <div key={e.id} onClick={() => toggleSeleccionCuentaModal(e.id)} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', borderRadius: '8px', border: `1px solid ${seleccionada ? '#0284c7' : tema.border}`, background: seleccionada ? 'rgba(2, 132, 199, 0.15)' : tema.inputBg, cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {seleccionada ? <CheckSquare size={16} color="#0284c7" /> : <Square size={16} color={tema.textMuted} />}
+                        <span>#{e.consecutivo} ({e.fecha_envio})</span>
+                      </div>
+                      <b style={{ color: '#f97316' }}>{formatoCOP(e.saldo_pendiente)}</b>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#22c55e' }}>Monto Real Transferido por Innovative:</label>
+                <input type="number" step="any" value={montoRealRecibido} onChange={(e) => setMontoRealRecibido(e.target.value)} placeholder={String(totalSeleccionadoAbonoMultiple)} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${diferenciaDescuento > 0 ? '#f97316' : tema.inputBorder}`, color: '#22c55e', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              {diferenciaDescuento > 0 && (
+                <div style={{ background: 'rgba(249, 115, 22, 0.1)', padding: '10px', borderRadius: '8px', border: '1px solid #f97316', fontSize: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f97316', fontWeight: 'bold', marginBottom: '4px' }}>
+                    <span>Diferencia por bajas / merma:</span>
+                    <span>-{formatoCOP(diferenciaDescuento)}</span>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={esDescuentoDefinitivo} onChange={(e) => setEsDescuentoDefinitivo(e.target.checked)} />
+                    <span>Absorber diferencia y saldar cuentas a $0</span>
+                  </label>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button type="button" onClick={() => setModalAbonoMultipleAbierto(false)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" disabled={cuentasSeleccionadasModal.length === 0} style={{ padding: '8px 16px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Registrar Pago</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: EDITAR PEDIDO */}
       {modalEditarPedido && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Editar Pedido #{formEditarPed.consecutivo}</h3>
@@ -2062,9 +2141,9 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL: PAGAR FLETE A MACAREO (Con propina) */}
+      {/* MODAL: PAGAR FLETE A MACAREO */}
       {modalPagarFletePedido && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '380px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Pagar Flete a Macareo</h3>
@@ -2107,7 +2186,7 @@ export default function App() {
 
       {/* MODAL: PAGAR FRUTA A EDISON */}
       {modalPagarFrutaPedido && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '380px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Pagar Fruta a Edison</h3>
@@ -2138,9 +2217,9 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL: LIQUIDAR BÁSCULA CON COMPARATIVO DE MERMA VISIBLE */}
+      {/* MODAL: LIQUIDAR BÁSCULA */}
       {modalLiquidarPedido && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Confirmar Báscula Innovative</h3>
@@ -2194,39 +2273,16 @@ export default function App() {
         </div>
       )}
 
-      {/* ==================== MODAL CUENTA DE COBRO ==================== */}
+      {/* MODAL: CUENTA DE COBRO (PDF) */}
       {modalCuentaCobro && (
         <div 
           onClick={() => setModalCuentaCobro(null)}
-          style={{ 
-            position: 'fixed', 
-            top: 0, 
-            left: 0, 
-            right: 0, 
-            bottom: 0, 
-            backgroundColor: 'rgba(0, 0, 0, 0.88)', 
-            display: 'flex', 
-            justifyContent: 'center', 
-            alignItems: 'center', 
-            zIndex: 9999, 
-            padding: '16px' 
-          }}
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.88)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '16px' }}
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            style={{ 
-              background: '#ffffff', 
-              color: '#0f172a', 
-              width: '100%', 
-              maxWidth: '560px', 
-              borderRadius: '16px', 
-              padding: '24px', 
-              maxHeight: '92vh', 
-              overflowY: 'auto',
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
-            }}
+            style={{ background: '#ffffff', color: '#0f172a', width: '100%', maxWidth: '560px', borderRadius: '16px', padding: '24px', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}
           >
-            {/* Botones de acción */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button 
@@ -2250,7 +2306,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* Cabecera */}
             <div style={{ textAlign: 'center', borderBottom: '2px solid #0f172a', paddingBottom: '12px', marginBottom: '16px' }}>
               <h2 style={{ margin: 0, fontSize: '18px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 CUENTA DE COBRO # {modalCuentaCobro.consecutivo}
@@ -2260,7 +2315,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Datos */}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '16px', lineHeight: '1.4' }}>
               <div>
                 <b>Cliente:</b> Innovative Kitchen SAS<br />
@@ -2272,7 +2326,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tabla */}
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', marginBottom: '16px' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderTop: '1px solid #0f172a', borderBottom: '1px solid #0f172a' }}>
@@ -2313,27 +2366,18 @@ export default function App() {
               </tbody>
             </table>
 
-            {/* Banco */}
             <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', fontSize: '12px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
               <div>Forma de Pago: <b>Bancolombia Ahorros # 554 879 253 72</b></div>
               <div>A nombre de: <b>Elkin Bohórquez Tarud</b> (CC 72.271.189)</div>
             </div>
 
-            {/* Firma alineada estrictamente a la izquierda */}
             <div style={{ marginTop: '20px', textAlign: 'left' }}>
               <div style={{ width: '220px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                 <div style={{ minHeight: '52px', display: 'flex', alignItems: 'flex-end' }}>
                   <img 
                     src="/firma.png" 
                     alt="Firma" 
-                    style={{ 
-                      maxHeight: '50px', 
-                      maxWidth: '180px', 
-                      objectFit: 'contain',
-                      mixBlendMode: 'multiply',
-                      display: 'block',
-                      marginBottom: '-4px'
-                    }} 
+                    style={{ maxHeight: '50px', maxWidth: '180px', objectFit: 'contain', mixBlendMode: 'multiply', display: 'block', marginBottom: '-4px' }} 
                   />
                 </div>
                 <div style={{ width: '100%', borderTop: '1.5px solid #0f172a', paddingTop: '4px' }}>
@@ -2349,7 +2393,7 @@ export default function App() {
 
       {/* MODAL: EDITAR PRECIO COMPRA EDISON */}
       {modalEditarPrecioCompra && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '340px', border: `1px solid ${tema.border}` }}>
             <h3 style={{ margin: '0 0 10px', fontSize: '15px', fontWeight: 'bold' }}>Precio Compra Edison</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
@@ -2369,7 +2413,7 @@ export default function App() {
 
       {/* MODAL: EDITAR DESPACHO */}
       {modalEditarDespachoCompleto && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 120, padding: '16px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '16px' }}>
           <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Editar Despacho #{formEdicion.consecutivo}</h3>
@@ -2402,6 +2446,51 @@ export default function App() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
                 <button type="button" onClick={() => setModalEditarDespachoCompleto(false)} style={{ padding: '8px 12px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '6px', cursor: 'pointer' }}>Cancelar</button>
                 <button type="submit" style={{ padding: '8px 16px', background: '#38bdf8', color: '#090d16', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PAGO A PROVEEDOR */}
+      {modalPagoProvAbierto && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '16px' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '480px', border: `1px solid ${tema.border}`, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Pago a Proveedor</h3>
+              <button onClick={() => setModalPagoProvAbierto(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <form onSubmit={guardarPagoProveedorMultiple} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <select value={provSeleccionadoId} onChange={(e) => { setProvSeleccionadoId(e.target.value); setDespachosProvSeleccionados([]); }} style={{ width: '100%', padding: '10px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', fontWeight: 'bold' }}>
+                {proveedores.map(p => (
+                  <option key={p.id} value={p.id}>{p.nombre} ({p.tipo === 'transporte' ? 'Fletes Macareo' : 'Fruta Edison'})</option>
+                ))}
+              </select>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                {despachosPendientesParaProveedor.map(e => {
+                  const sel = despachosProvSeleccionados.includes(e.id);
+                  return (
+                    <div key={e.id} onClick={() => toggleSeleccionDespachoProv(e.id)} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', borderRadius: '8px', border: `1px solid ${sel ? '#dc2626' : tema.border}`, background: sel ? 'rgba(220, 38, 38, 0.15)' : tema.inputBg, cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {sel ? <CheckSquare size={16} color="#dc2626" /> : <Square size={16} color={tema.textMuted} />}
+                        <span>#{e.consecutivo} ({e.fecha_envio})</span>
+                      </div>
+                      <b style={{ color: '#ef4444' }}>{formatoCOP(e.saldoPendienteProv)}</b>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', background: darkMode ? '#0b1120' : '#f8fafc', borderRadius: '8px', border: `1px solid ${tema.border}` }}>
+                <span>Total a Transferir:</span>
+                <b style={{ color: '#ef4444', fontSize: '18px' }}>{formatoCOP(totalSeleccionadoPagoProv)}</b>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button type="button" onClick={() => setModalPagoProvAbierto(false)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" disabled={despachosProvSeleccionados.length === 0} style={{ padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Pagar Proveedor</button>
               </div>
             </form>
           </div>
