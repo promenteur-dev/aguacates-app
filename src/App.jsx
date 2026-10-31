@@ -182,11 +182,18 @@ export default function App() {
     setPinInput('');
   }
 
-  function calcularSiguienteConsecutivo(listaEnvios, listaPedidos) {
-    const numerosEnvios = (listaEnvios || []).map(e => parseInt(String(e.consecutivo || '').replace(/\D/g, '') || '0', 10));
-    const numerosPedidos = (listaPedidos || []).map(p => parseInt(String(p.consecutivo || '').replace(/\D/g, '') || '0', 10));
-    const maximo = Math.max(...numerosEnvios, ...numerosPedidos, 0);
-    return String(maximo + 1).padStart(6, '0');
+  // CÁLCULO SEGURO DEL SIGUIENTE CONSECUTIVO (NUNCA FALLA NI BLOQUEA EL BOTÓN)
+  function calcularSiguienteConsecutivo(listaEnvios = [], listaPedidos = []) {
+    let max = 0;
+    (listaEnvios || []).forEach(e => {
+      const num = parseInt(String(e?.consecutivo || '').replace(/\D/g, ''), 10);
+      if (!isNaN(num) && num > max) max = num;
+    });
+    (listaPedidos || []).forEach(p => {
+      const num = parseInt(String(p?.consecutivo || '').replace(/\D/g, ''), 10);
+      if (!isNaN(num) && num > max) max = num;
+    });
+    return String((max || 594) + 1).padStart(6, '0');
   }
 
   async function cargarDatos() {
@@ -285,7 +292,7 @@ export default function App() {
     document.body.removeChild(link);
   }
 
-  // CÁLCULO EXACTO DE LA DEUDA DE EDISON POR ENVÍO
+  // CÁLCULO DE EDISON POR DESPACHO
   const obtenerEstadoEdison = (envio) => {
     const costoFrutaTotal = Number(envio.total_compra_fruta || (Number(envio.cajas || 0) * 25 * Number(envio.precio_compra_kg || 6000)));
     const pagadoAbonos = pagosProveedores
@@ -452,18 +459,33 @@ export default function App() {
     window.open(`https://api.whatsapp.com/send?text=${texto}`, '_blank');
   }
 
+  // BOTÓN + PEDIDO PROTEGIDO CONTRA ERRORES
   function abrirModalCrearPedido() {
-    const proxConsecutivo = calcularSiguienteConsecutivo(envios, pedidos);
-    setFormPedido({
-      fecha_pedido: new Date().toISOString().split('T')[0],
-      cajas: '',
-      precio_compra_kg: 6000,
-      precio_venta_kg: 11200,
-      costo_flete_caja: 20000,
-      notas: '',
-      consecutivo: proxConsecutivo
-    });
-    setModalNuevoPedido(true);
+    try {
+      const proxConsecutivo = calcularSiguienteConsecutivo(envios, pedidos);
+      setFormPedido({
+        fecha_pedido: new Date().toISOString().split('T')[0],
+        cajas: '',
+        precio_compra_kg: 6000,
+        precio_venta_kg: 11200,
+        costo_flete_caja: 20000,
+        notas: '',
+        consecutivo: proxConsecutivo
+      });
+      setModalNuevoPedido(true);
+    } catch (e) {
+      console.error('Error al abrir modal pedido:', e);
+      setFormPedido({
+        fecha_pedido: new Date().toISOString().split('T')[0],
+        cajas: '',
+        precio_compra_kg: 6000,
+        precio_venta_kg: 11200,
+        costo_flete_caja: 20000,
+        notas: '',
+        consecutivo: '000597'
+      });
+      setModalNuevoPedido(true);
+    }
   }
 
   async function guardarNuevoPedido(e) {
@@ -897,7 +919,7 @@ export default function App() {
 
   const deudaEdison = Math.max(0, totalCostoFruta - pagadoFruta) + frutaPedidosPendientes;
   
-  // Macareo: solo suma pedidos que NO tengan flete_pagado
+  // Macareo queda en 0 real si los fletes activos están pagados
   const fletesPedidosPendientes = pedidos
     .filter(p => p.estado !== 'liquidado' && !p.flete_pagado)
     .reduce((sum, p) => sum + (Number(p.cajas || 0) * Number(p.costo_flete_caja || 20000)), 0);
@@ -1259,7 +1281,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Macareo: al día cuando flete 593 y 594 están pagos */}
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>DEBO A MACAREO</span>
@@ -1269,7 +1290,7 @@ export default function App() {
             {formatoCOP(deudaMacareo)}
           </div>
           <div style={{ fontSize: '10px', color: deudaMacareo === 0 ? '#22c55e' : '#f97316', marginTop: '2px', fontWeight: '600' }}>
-            {deudaMacareo === 0 ? '✅ Fletes al día ($0)' : '⚠️ Flete pendiente'}
+            {deudaMacareo === 0 ? '✅ Fletes al día ($0)' : '⚠️ Fletes pendientes'}
           </div>
         </div>
 
@@ -1511,7 +1532,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* DESGLOSE EXPLÍCITO DE EDISON Y MACAREO EN CELULAR */}
+                    {/* DESGLOSE SEPARADO EDISON Y MACAREO */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>
                       <div>
                         <span style={{ color: tema.textMuted }}>Deuda Fruta Edison:</span><br />
@@ -1544,12 +1565,11 @@ export default function App() {
 
                       <button
                         onClick={() => compartirPDFWhatsApp(r)}
-                        style={{ padding: '9px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                        style={{ padding: '9px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                       >
                         <Share2 size={14} /> PDF
                       </button>
 
-                      {/* Botón rápido para abonarle a Edison este despacho */}
                       {!infoEd.estaSaldado ? (
                         <button
                           onClick={() => {
@@ -1593,7 +1613,6 @@ export default function App() {
                   <th onClick={() => handleOrdenar('cajas')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Cajas</th>
                   <th onClick={() => handleOrdenar('kilos')} style={{ padding: '12px 14px', cursor: 'pointer' }}>Kilos</th>
                   
-                  {/* COLUMNAS SEPARADAS Y CLARAS */}
                   <th style={{ padding: '12px 14px', color: '#ef4444' }}>Deuda Fruta Edison</th>
                   <th style={{ padding: '12px 14px', color: '#22c55e' }}>Flete Macareo</th>
 
@@ -1624,7 +1643,6 @@ export default function App() {
                       <td style={{ padding: '12px 14px', fontWeight: 'bold' }}>{p.cajas} cajas</td>
                       <td style={{ padding: '12px 14px' }}><span style={{ padding: '3px 6px', borderRadius: '4px', fontSize: '11px', background: 'rgba(234, 179, 8, 0.2)', color: '#eab308', fontWeight: 'bold' }}>⏳ Por pesar</span></td>
                       
-                      {/* Edison en pedido */}
                       <td style={{ padding: '12px 14px' }}>
                         {frutaPaga ? (
                           <span style={{ color: '#22c55e', fontWeight: 'bold' }}>✅ Paga ({formatoCOP(p.monto_fruta_pagado || costoFrutaTotal)})</span>
@@ -1635,7 +1653,6 @@ export default function App() {
                         )}
                       </td>
 
-                      {/* Macareo en pedido */}
                       <td style={{ padding: '12px 14px' }}>
                         {fletePago ? (
                           <span style={{ color: '#22c55e', fontWeight: 'bold' }}>✅ Pago ({formatoCOP(p.monto_flete_pagado || costoFleteTotal)})</span>
@@ -1689,7 +1706,7 @@ export default function App() {
                       <td style={{ padding: '12px 14px' }}>{r.cajas}</td>
                       <td style={{ padding: '12px 14px' }}>{r.kilos} Kg</td>
 
-                      {/* 1. DEUDA EXACTA DE EDISON */}
+                      {/* Deuda Fruta Edison con botón Abonar */}
                       <td style={{ padding: '12px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <b style={{ color: infoEd.estaSaldado ? '#22c55e' : '#ef4444', fontSize: '13px' }}>
@@ -1715,7 +1732,7 @@ export default function App() {
                         </div>
                       </td>
 
-                      {/* 2. FLETE MACAREO SEPARADO */}
+                      {/* Flete Macareo Independiente */}
                       <td style={{ padding: '12px 14px', color: '#22c55e', fontWeight: 'bold' }}>
                         {formatoCOP(r.total_flete)}
                       </td>
@@ -1739,7 +1756,7 @@ export default function App() {
                               <DollarSign size={13} /> Abono
                             </button>
                           ) : (
-                            <button onClick={() => abrirModalHistorial(r)} style={{ padding: '5px 8px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', cursor: 'pointer' }}>
+                            <button onClick={() => abrirModalHistorial(r)} style={{ padding: '5px 8px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
                               <CheckCircle2 size={13} /> Pagado
                             </button>
                           )}
@@ -2002,6 +2019,61 @@ export default function App() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
                 <button type="button" onClick={() => setModalPagarFrutaPedido(null)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
                 <button type="submit" style={{ padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Confirmar Pago Fruta</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: NUEVO PEDIDO */}
+      {modalNuevoPedido && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 110, padding: '16px' }}>
+          <div style={{ background: tema.cardBg, color: tema.textMain, padding: '20px', borderRadius: '16px', width: '100%', maxWidth: '420px', border: `1px solid ${tema.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Nuevo Pedido Solicitado</h3>
+              <button onClick={() => setModalNuevoPedido(false)} style={{ background: 'none', border: 'none', color: tema.textMuted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <form onSubmit={guardarNuevoPedido} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Consecutivo</label>
+                  <input required value={formPedido.consecutivo} onChange={(e) => setFormPedido({...formPedido, consecutivo: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#38bdf8', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Fecha Pedido</label>
+                  <input type="date" required value={formPedido.fecha_pedido} onChange={(e) => setFormPedido({...formPedido, fecha_pedido: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#eab308' }}>Número de Cajas *</label>
+                <input type="number" step="any" required placeholder="0" autoFocus value={formPedido.cajas} onChange={(e) => setFormPedido({...formPedido, cajas: e.target.value})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: '#eab308', fontSize: '16px', fontWeight: 'bold', borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Compra/Kg Edison</label>
+                  <select value={formPedido.precio_compra_kg} onChange={(e) => setFormPedido({...formPedido, precio_compra_kg: Number(e.target.value)})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px' }}>
+                    {PRECIOS_COMPRA.map(p => <option key={p} value={p}>{formatoCOP(p)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: tema.textMuted }}>Flete/Caja Macareo</label>
+                  <select value={formPedido.costo_flete_caja} onChange={(e) => setFormPedido({...formPedido, costo_flete_caja: Number(e.target.value)})} style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px' }}>
+                    {TARIFAS_FLETE.map(t => <option key={t} value={t}>{formatoCOP(t)}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', color: tema.textMuted }}>Notas</label>
+                <input value={formPedido.notas} onChange={(e) => setFormPedido({...formPedido, notas: e.target.value})} placeholder="Ej: 4 maduro, 2 pintón" style={{ width: '100%', padding: '8px', background: tema.inputBg, border: `1px solid ${tema.inputBorder}`, color: tema.textMain, borderRadius: '8px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button type="button" onClick={() => setModalNuevoPedido(false)} style={{ padding: '8px 14px', background: 'transparent', border: `1px solid ${tema.border}`, color: tema.textMuted, borderRadius: '8px', cursor: 'pointer' }}>Cancelar</button>
+                <button type="submit" style={{ padding: '8px 16px', background: '#eab308', color: '#090d16', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Guardar Pedido</button>
               </div>
             </form>
           </div>
