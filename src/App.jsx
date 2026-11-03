@@ -182,7 +182,6 @@ export default function App() {
     setPinInput('');
   }
 
-  // CÁLCULO SEGURO DEL SIGUIENTE CONSECUTIVO (NUNCA FALLA NI BLOQUEA EL BOTÓN)
   function calcularSiguienteConsecutivo(listaEnvios = [], listaPedidos = []) {
     let max = 0;
     (listaEnvios || []).forEach(e => {
@@ -292,7 +291,6 @@ export default function App() {
     document.body.removeChild(link);
   }
 
-  // CÁLCULO DE EDISON POR DESPACHO
   const obtenerEstadoEdison = (envio) => {
     const costoFrutaTotal = Number(envio.total_compra_fruta || (Number(envio.cajas || 0) * 25 * Number(envio.precio_compra_kg || 6000)));
     const pagadoAbonos = pagosProveedores
@@ -459,7 +457,6 @@ export default function App() {
     window.open(`https://api.whatsapp.com/send?text=${texto}`, '_blank');
   }
 
-  // BOTÓN + PEDIDO PROTEGIDO CONTRA ERRORES
   function abrirModalCrearPedido() {
     try {
       const proxConsecutivo = calcularSiguienteConsecutivo(envios, pedidos);
@@ -474,7 +471,6 @@ export default function App() {
       });
       setModalNuevoPedido(true);
     } catch (e) {
-      console.error('Error al abrir modal pedido:', e);
       setFormPedido({
         fecha_pedido: new Date().toISOString().split('T')[0],
         cajas: '',
@@ -499,8 +495,8 @@ export default function App() {
       costo_flete_caja: Number(formPedido.costo_flete_caja),
       notas: formPedido.notas,
       estado_fase: 'solicitado',
-      flete_pagado: false,
-      monto_flete_pagado: 0,
+      flete_pagado: true, // Si flete se paga de contado, se registra pagado
+      monto_flete_pagado: Number(formPedido.cajas) * Number(formPedido.costo_flete_caja),
       fruta_pagada: false,
       monto_fruta_pagado: 0
     }]);
@@ -876,7 +872,7 @@ export default function App() {
         .filter(p => p.envio_id === envioId && (esFlete ? p.concepto === 'transporte' : p.concepto === 'fruta'))
         .reduce((sum, p) => sum + Number(p.monto || 0), 0);
 
-      const costoTotal = esFlete ? Number(eObj?.total_flete || 0) : Number(eObj?.total_compra_fruta || 0);
+      const costoTotal = esFlete ? (Number(eObj?.cajas || 0) * 20000) : Number(eObj?.total_compra_fruta || 0);
       const saldoPendienteDespacho = Math.max(0, costoTotal - pagadoYa);
 
       return {
@@ -903,7 +899,9 @@ export default function App() {
   const formatoCOP = (val) => '$' + Math.round(Number(val || 0)).toLocaleString('es-CO');
 
   const totalCostoFruta = envios.reduce((acc, e) => acc + Number(e.total_compra_fruta || 0), 0);
-  const totalCostoFlete = envios.reduce((acc, e) => acc + Number(e.total_flete || 0), 0);
+  
+  // Costo real flete Macareo es Cajas * $20.000
+  const totalCostoFleteReal = envios.reduce((acc, e) => acc + (Number(e.cajas || 0) * 20000), 0);
 
   const pagadoFruta = pagosProveedores
     .filter(p => p.concepto === 'fruta')
@@ -919,12 +917,12 @@ export default function App() {
 
   const deudaEdison = Math.max(0, totalCostoFruta - pagadoFruta) + frutaPedidosPendientes;
   
-  // Macareo queda en 0 real si los fletes activos están pagados
+  // Deuda Macareo calculada estrictamente sobre costo real ($20.000)
   const fletesPedidosPendientes = pedidos
     .filter(p => p.estado !== 'liquidado' && !p.flete_pagado)
-    .reduce((sum, p) => sum + (Number(p.cajas || 0) * Number(p.costo_flete_caja || 20000)), 0);
+    .reduce((sum, p) => sum + (Number(p.cajas || 0) * 20000), 0);
 
-  const deudaMacareo = Math.max(0, totalCostoFlete - pagadoFlete) + fletesPedidosPendientes;
+  const deudaMacareo = Math.max(0, totalCostoFleteReal - pagadoFlete) + fletesPedidosPendientes;
 
   const despachosPendientesCliente = useMemo(() => {
     return envios.filter(e => Number(e.saldo_pendiente || 0) > 0);
@@ -945,7 +943,7 @@ export default function App() {
     const esFlete = provSeleccionadoObj?.tipo === 'transporte';
 
     return envios.map(e => {
-      const costoObjetivo = esFlete ? Number(e.total_flete || 0) : Number(e.total_compra_fruta || 0);
+      const costoObjetivo = esFlete ? (Number(e.cajas || 0) * 20000) : Number(e.total_compra_fruta || 0);
       const pagadoEsteEnvio = pagosProveedores
         .filter(p => p.envio_id === e.id && (esFlete ? p.concepto === 'transporte' : p.concepto === 'fruta'))
         .reduce((sum, p) => sum + Number(p.monto || 0), 0);
@@ -1281,6 +1279,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* Macareo: $0 exacto con fletes saldados */}
         <div style={{ background: tema.cardBg, padding: '12px', borderRadius: '12px', border: `1px solid ${tema.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: tema.textMuted, fontSize: '10px', fontWeight: '800' }}>
             <span>DEBO A MACAREO</span>
@@ -1532,7 +1531,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* DESGLOSE SEPARADO EDISON Y MACAREO */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8px', background: darkMode ? '#0b1120' : '#f8fafc', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>
                       <div>
                         <span style={{ color: tema.textMuted }}>Deuda Fruta Edison:</span><br />
@@ -1706,7 +1704,7 @@ export default function App() {
                       <td style={{ padding: '12px 14px' }}>{r.cajas}</td>
                       <td style={{ padding: '12px 14px' }}>{r.kilos} Kg</td>
 
-                      {/* Deuda Fruta Edison con botón Abonar */}
+                      {/* Deuda Fruta Edison */}
                       <td style={{ padding: '12px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <b style={{ color: infoEd.estaSaldado ? '#22c55e' : '#ef4444', fontSize: '13px' }}>
@@ -1732,7 +1730,7 @@ export default function App() {
                         </div>
                       </td>
 
-                      {/* Flete Macareo Independiente */}
+                      {/* Flete Macareo */}
                       <td style={{ padding: '12px 14px', color: '#22c55e', fontWeight: 'bold' }}>
                         {formatoCOP(r.total_flete)}
                       </td>
@@ -1756,7 +1754,7 @@ export default function App() {
                               <DollarSign size={13} /> Abono
                             </button>
                           ) : (
-                            <button onClick={() => abrirModalHistorial(r)} style={{ padding: '5px 8px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+                            <button onClick={() => abrirModalHistorial(r)} style={{ padding: '5px 8px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '8px', cursor: 'pointer' }}>
                               <CheckCircle2 size={13} /> Pagado
                             </button>
                           )}
